@@ -51,7 +51,9 @@ def total_storage_used_by_file_kind():
 def get_storage_allowed():
     limit = get_max_storage()
     usage = total_storage_used()
-    return limit - usage[0].total_size
+    total_size = usage[0].total_size if usage[0].total_size is not None else 0
+
+    return limit - total_size
 
 
 def total_disk_storage_used():
