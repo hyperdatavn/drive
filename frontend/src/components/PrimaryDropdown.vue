@@ -99,15 +99,11 @@ export default {
             },
             {
               icon: Docs,
-              label: "Documentation",
-              onClick: () =>
-                window.open("https://docs.frappe.io/drive", "_blank"),
-            },
-            {
-              icon: "life-buoy",
-              label: "Support",
-              onClick: () => window.open("https://t.me/frappedrive", "_blank"),
-            },
+              label: "Back To Course",
+              onClick() {
+                window.location.href = "/lms/course"
+              },
+            }
           ],
         },
         {

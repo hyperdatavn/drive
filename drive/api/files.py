@@ -359,7 +359,7 @@ def get_file_content(entity_name, trigger_download=0):  #
     drive_entity = frappe.get_value(
         "Drive Entity",
         entity_name,
-        ["is_group", "path", "title", "mime_type", "file_size"],
+        ["is_group", "path", "title", "mime_type", "file_size", "users_download"],
         as_dict=1,
     )
     if not drive_entity or drive_entity.is_group:
@@ -379,6 +379,16 @@ def get_file_content(entity_name, trigger_download=0):  #
         response.headers.add("Accept-Range", "bytes")
 
         if trigger_download:
+            # Update users download file
+            users_download = drive_entity.users_download or ""
+            user_list = users_download.split(",") if users_download else []
+            if frappe.session.user not in user_list:
+                user_list.append(frappe.session.user)
+                updated_users_download = ",".join(user_list)
+                frappe.db.set_value("Drive Entity", entity_name, "users_download", updated_users_download)
+                frappe.db.commit()
+            # End update users download file      
+
             response.headers.add(
                 "Content-Disposition",
                 "attachment",

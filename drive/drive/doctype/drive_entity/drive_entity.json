@@ -24,6 +24,7 @@
     "allow_download",
     "color",
     "file_ext",
+    "users_download",
     "tags",
     "document"
   ],
@@ -91,6 +92,12 @@
       "fieldname": "file_ext",
       "fieldtype": "Data",
       "label": "File Ext",
+      "read_only": 1
+    },
+    {
+      "fieldname": "users_download",
+      "fieldtype": "Text",
+      "label": "Users Donwload",
       "read_only": 1
     },
     {
