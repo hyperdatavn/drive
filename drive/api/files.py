@@ -5,7 +5,6 @@ import json
 from pypika import Order, Case, functions as fn
 from pathlib import Path
 from werkzeug.wrappers import Response
-from werkzeug.wsgi import wrap_file
 from werkzeug.utils import secure_filename, send_file
 import uuid
 import mimetypes
@@ -337,82 +336,45 @@ def get_file_content(entity_name, trigger_download=0):  #
     :raises FileLockedError: If the file has been writer-locked
     """
 
-    is_public = False
-    if frappe.db.exists(
-        {
-            "doctype": "Drive DocShare",
-            "share_doctype": "Drive Entity",
-            "share_name": entity_name,
-            "public": 1,
-        }
+    if not frappe.has_permission(
+        doctype="Drive Entity",
+        doc=entity_name,
+        ptype="read",
+        user=frappe.session.user,
     ):
-        is_public = True
-    if not is_public:
-        if not frappe.has_permission(
-            doctype="Drive Entity",
-            doc=entity_name,
-            ptype="read",
-            user=frappe.session.user,
-        ):
-            raise frappe.PermissionError("You do not have permission to view this file")
+        raise frappe.PermissionError("You do not have permission to view this file")
     trigger_download = int(trigger_download)
     drive_entity = frappe.get_value(
         "Drive Entity",
         entity_name,
-        ["is_group", "path", "title", "mime_type", "file_size", "users_download"],
+        ["is_group", "path", "title", "mime_type", "file_size", "allow_download", "is_active", "owner", "users_download"],
         as_dict=1,
     )
+
     if not drive_entity or drive_entity.is_group:
         raise ValueError
+    if drive_entity.is_active != 1:
+        raise FileNotFoundError
 
     with DistributedLock(drive_entity.path, exclusive=False):
-        try:
-            file = open(drive_entity.path, "rb")
-        except TypeError:
-            response = Response(frappe.request.environ)
-            response.status_code = 204
-            return response
-
-        response = Response(wrap_file(frappe.request.environ, file), direct_passthrough=True)
-        response.headers.add("Content-Length", str(drive_entity.file_size))
-        response.headers.add("Content-Type", response.mimetype)
-        response.headers.add("Accept-Range", "bytes")
-
-        if trigger_download:
-            # Update users download file
-            users_download = drive_entity.users_download or ""
-            user_list = users_download.split(",") if users_download else []
-            if frappe.session.user not in user_list:
-                user_list.append(frappe.session.user)
-                updated_users_download = ",".join(user_list)
-                frappe.db.set_value("Drive Entity", entity_name, "users_download", updated_users_download)
-                frappe.db.commit()
-            # End update users download file      
-
-            response.headers.add(
-                "Content-Disposition",
-                "attachment",
-                filename=format(urllib.parse.quote(drive_entity.title.encode("utf8"))),
-            )
-            return send_file(
-                drive_entity.path,
-                mimetype=drive_entity.mime_type,
-                as_attachment=True,
-                conditional=True,
-                download_name=drive_entity.title,
-                environ=frappe.request.environ,
-            )
-
-        response.headers.add(
-            "Content-Disposition",
-            "inline",
-            filename=format(urllib.parse.quote(drive_entity.title.encode("utf8"))),
+        # Update users download file
+        users_download = drive_entity.users_download or ""
+        user_list = users_download.split(",") if users_download else []
+        if frappe.session.user not in user_list:
+            user_list.append(frappe.session.user)
+            updated_users_download = ",".join(user_list)
+            frappe.db.set_value("Drive Entity", entity_name, "users_download", updated_users_download)
+            frappe.db.commit()
+        # End update users download file    
+        return send_file(
+            drive_entity.path,
+            mimetype=drive_entity.mime_type,
+            as_attachment=trigger_download,
+            conditional=True,
+            max_age=3600,
+            download_name=drive_entity.title,
+            environ=frappe.request.environ,
         )
-        range_header = frappe.request.headers.get("Range", None)
-        if range_header:
-            return stream_file_content(drive_entity, range_header)
-
-        return response
 
 
 def stream_file_content(drive_entity, range_header):
