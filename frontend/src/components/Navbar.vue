@@ -10,9 +10,7 @@
       <Breadcrumbs />
       <div class="flex gap-1">
         <div
-          v-if="
-            $route.meta.documentPage && connectedUsers.length > 1 && isLoggedIn
-          "
+          v-if="connectedUsers.length > 1 && isLoggedIn"
           class="hidden sm:flex bg-gray-200 rounded justify-center items-center px-1"
         >
           <UsersBar />
@@ -155,6 +153,7 @@ import NewFolder from "./EspressoIcons/NewFolder.vue"
 import FileUpload from "./EspressoIcons/File-upload.vue"
 import FolderUpload from "./EspressoIcons/Folder-upload.vue"
 import NewFile from "./EspressoIcons/NewFile.vue"
+import { capture } from "@/telemetry"
 
 export default {
   name: "Navbar",
@@ -219,6 +218,7 @@ export default {
                   content: null,
                   parent: this.$store.state.currentFolderID,
                 })
+                capture("new_document_created")
                 if (this.$store.state.editorNewTab) {
                   window.open(
                     this.$router.resolve({

@@ -76,6 +76,7 @@ def create_document_entity(title, content, parent=None):
     drive_doc = frappe.new_doc("Drive Document")
     drive_doc.title = new_title
     drive_doc.content = content
+    drive_doc.version = 1
     drive_doc.save()
 
     drive_entity = frappe.new_doc("Drive Entity")
@@ -281,7 +282,7 @@ def get_doc_content(drive_document_name):
     drive_document = frappe.db.get_value(
         "Drive Document",
         drive_document_name,
-        ["content", "raw_content", "settings"],
+        ["content", "raw_content", "settings", "version"],
         as_dict=1,
     )
     return drive_document
@@ -304,6 +305,7 @@ def save_doc(entity_name, doc_name, raw_content, content, file_size, mentions, s
         raise frappe.PermissionError("You do not have permission to view this file")
     if settings:
         frappe.db.set_value("Drive Document", doc_name, "settings", json.dumps(settings))
+    file_size = len(content.encode("utf-8")) + len(raw_content.encode("utf-8"))
     frappe.db.set_value("Drive Document", doc_name, "content", content)
     frappe.db.set_value("Drive Document", doc_name, "raw_content", raw_content)
     frappe.db.set_value("Drive Document", doc_name, "mentions", json.dumps(mentions))
@@ -321,6 +323,48 @@ def save_doc(entity_name, doc_name, raw_content, content, file_size, mentions, s
             document_name=doc_name,
         )
     return
+
+
+@frappe.whitelist()
+def create_doc_version(entity_name, doc_name, snapshot_data, snapshot_message):
+    if not frappe.has_permission(
+        doctype="Drive Entity",
+        doc=entity_name,
+        ptype="write",
+        user=frappe.session.user,
+    ):
+        raise frappe.PermissionError("You do not have permission to view this file")
+    new_version = frappe.new_doc("Drive Document Version")
+    new_version.snapshot_data = snapshot_data
+    new_version.parent_entity = entity_name
+    new_version.snapshot_message = snapshot_message
+    new_version.parent_document = doc_name
+    new_version.snapshot_size = len(snapshot_data.encode("utf-8"))
+    new_version.save()
+    return
+
+
+@frappe.whitelist()
+def get_doc_version_list(entity_name):
+    if not frappe.has_permission(
+        doctype="Drive Entity",
+        doc=entity_name,
+        ptype="write",
+        user=frappe.session.user,
+    ):
+        raise frappe.PermissionError("You do not have permission to view this file")
+    return frappe.get_list(
+        "Drive Document Version",
+        filters={"parent_entity": entity_name},
+        order_by="creation desc",
+        fields=["*"],
+    )
+
+
+@frappe.whitelist()
+def preview_doc_version(version_name):
+    preview_version = frappe.get_doc("Drive Document Version", version_name)
+    return preview_version
 
 
 @frappe.whitelist(allow_guest=True)
@@ -347,7 +391,17 @@ def get_file_content(entity_name, trigger_download=0):  #
     drive_entity = frappe.get_value(
         "Drive Entity",
         entity_name,
-        ["is_group", "path", "title", "mime_type", "file_size", "allow_download", "is_active", "owner", "users_download"],
+        [
+            "is_group",
+            "path",
+            "title",
+            "mime_type",
+            "file_size",
+            "allow_download",
+            "is_active",
+            "owner",
+            "users_download",
+        ],
         as_dict=1,
     )
 
