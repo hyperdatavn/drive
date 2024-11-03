@@ -7,7 +7,7 @@
         : 'w-0 min-w-0 max-w-0 overflow-hidden opacity-0'
     "
   >
-    <div v-if="entity" class="w-full border-b pl-3 py-4">
+    <div v-if="entity" class="w-full border-b px-5 py-4">
       <div class="flex items-center">
         <div class="font-medium truncate text-lg">
           {{ entity.title }}
@@ -27,7 +27,7 @@
             <div class="text-base font-medium mb-4">Access</div>
             <div class="flex items-center justify-start">
               <Avatar
-                size="lg"
+                size="md"
                 :label="entity.owner"
                 :image="entity.user_image"
               ></Avatar>
@@ -38,7 +38,7 @@
                   (!!$resources.generalAccess.data?.length ||
                     !sharedWithList?.length)
                 "
-                size="lg"
+                size="md"
                 class="-mr-[3px] outline outline-white"
                 :general-access="$resources.generalAccess?.data?.[0]"
               />
@@ -49,7 +49,7 @@
                 <Avatar
                   v-for="user in sharedWithList.slice(0, 3)"
                   :key="user?.user_name"
-                  size="lg"
+                  size="md"
                   :label="user?.full_name ? user?.full_name : user?.user_name"
                   :image="user?.user_image"
                   class="-mr-[3px] outline outline-white"
@@ -57,63 +57,19 @@
 
                 <Avatar
                   v-if="sharedWithList.slice(3).length"
-                  size="lg"
+                  size="md"
                   :label="sharedWithList.slice(3).length.toString()"
                   class="-mr-[3px] outline outline-white"
                 />
               </div>
             </div>
           </div>
-          <!-- <div
-              v-if="
-                $resources.entityTags.data?.length || entity.owner === 'You'
-              "
-            >
-              <div class="text-base font-medium mb-4">Tags</div>
-              <div class="flex items-center justify-start flex-wrap gap-y-4">
-                <div
-                  v-if="$resources.entityTags.data?.length"
-                  class="flex flex-wrap gap-2 max-w-full"
-                >
-                  <Tag
-                    v-for="tag in $resources.entityTags?.data"
-                    :key="tag"
-                    :tag="tag"
-                    :entity="entity"
-                    @success="
-                      () => {
-                        userTags.fetch()
-                        $resources.entityTags.fetch()
-                      }
-                    "
-                  />
-                </div>
-                <span v-else class="text-gray-700 text-sm">
-                  This file has no tags
-                </span>
-                <Button
-                  v-if="!addTag && entity.owner === 'You'"
-                  class="ml-auto"
-                  @click="addTag = true"
-                >
-                  Add tag
-                </Button>
-                <TagInput
-                  v-if="addTag"
-                  :class="{ 'w-full': $resources.entityTags.data?.length }"
-                  :entity="entity"
-                  :unadded-tags="unaddedTags"
-                  @success="
-                    () => {
-                      userTags.fetch()
-                      $resources.entityTags.fetch()
-                      addTag = false
-                    }
-                  "
-                  @close="addTag = false"
-                />
-              </div>
-            </div> -->
+          <div
+            v-if="$resources.entityTags.data?.length || entity.owner === 'You'"
+          >
+            <div class="text-base font-medium mb-4">Tags</div>
+            <TagInput class="min-w-full" :entity="entity" />
+          </div>
           <div>
             <div class="text-base font-medium mb-4">Properties</div>
             <div class="text-base grid grid-flow-row grid-cols-2 gap-y-3">
@@ -201,6 +157,19 @@
         </div>
       </div>
 
+      <!-- Activity -->
+      <div
+        v-if="tab === 7"
+        class="max-h-[90vh] pt-4 pb-5 border-b overflow-y-auto overflow-x-hidden"
+      >
+        <span
+          class="inline-flex items-center gap-2.5 px-5 mb-5 text-gray-800 font-medium text-lg w-full"
+        >
+          Activity
+        </span>
+        <ActivityTree v-if="showActivity" />
+      </div>
+
       <!-- Typography -->
       <div v-if="tab === 0" class="flex flex-col px-5 py-4 border-b">
         <span
@@ -254,7 +223,7 @@
           </Button>
         </div>
 
-        <span class="font-semibold text-gray-600 text-xs my-2">CONTENT</span>
+        <span class="font-medium text-gray-600 text-xs my-2">CONTENT</span>
         <div class="w-full flex justify-between gap-x-1.5 mb-6">
           <Button
             class="w-1/3 font-bold"
@@ -791,7 +760,7 @@
           <span class="font-medium text-gray-700 text-base">Export</span>
           <Button
             class="w-full justify-start"
-            @click="() => emitter.emit('exportDocToPDF')"
+            @click="() => emitter.emit('printFile')"
           >
             <template #prefix>
               <FileDown class="text-gray-700 w-4 stroke-[1.5]" />
@@ -927,6 +896,8 @@ import { TiptapTransformer } from "@hocuspocus/transformer"
 import { fromUint8Array, toUint8Array } from "js-base64"
 import { formatDate } from "../../../utils/format"
 import AnnotationList from "../components/AnnotationList.vue"
+import Clock from "../../EspressoIcons/Clock.vue"
+import ActivityTree from "../../ActivityTree.vue"
 
 export default {
   name: "DocMenuAndInfoBar",
@@ -987,6 +958,8 @@ export default {
     Details,
     GeneralAccess,
     AnnotationList,
+    ActivityTree,
+    Clock,
   },
   inject: ["editor", "document"],
   emits: ["update:allComments", "update:activeAnnotation"],
@@ -1046,6 +1019,11 @@ export default {
         {
           name: "Versions",
           icon: markRaw(FileClock),
+          write: false,
+        },
+        {
+          name: "Clock",
+          icon: markRaw(Clock),
           write: false,
         },
       ],
@@ -1137,6 +1115,18 @@ export default {
       if (this.entity.is_group) return "Folder"
       const file = this.entity.file_kind
       return file?.charAt(0).toUpperCase() + file?.slice(1)
+    },
+    showActivity() {
+      return true
+      if (entity.value.owner === "You") {
+        return true
+      } else if (entity.value.write) {
+        return true
+      } else if (entity.value.allow_activity) {
+        return true
+      } else {
+        return false
+      }
     },
   },
   mounted() {
@@ -1394,7 +1384,7 @@ export default {
             console.log(error.messages)
           }
         },
-        auto: false,
+        auto: true,
       }
     },
     entityTags() {

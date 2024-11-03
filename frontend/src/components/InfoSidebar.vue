@@ -35,7 +35,7 @@
         <span
           class="inline-flex items-center gap-2.5 mb-5 text-gray-800 font-medium text-lg w-full"
         >
-          <Info />
+          <!-- <Info /> -->
           Information
         </span>
         <div
@@ -54,7 +54,7 @@
             <div class="text-base font-medium mb-4">Access</div>
             <div class="flex items-center justify-start">
               <Avatar
-                size="lg"
+                size="md"
                 :label="entity.owner"
                 :image="entity.user_image"
               />
@@ -64,7 +64,7 @@
                   !generalAccess.loading &&
                   (!!generalAccess.data?.length || !sharedWithList?.length)
                 "
-                size="lg"
+                size="md"
                 class="-mr-[3px] outline outline-white"
                 :general-access="generalAccess?.data?.[0]"
               />
@@ -75,7 +75,7 @@
                 <Avatar
                   v-for="user in sharedWithList.slice(0, 3)"
                   :key="user?.user_name"
-                  size="lg"
+                  size="md"
                   :label="user?.full_name ? user?.full_name : user?.user_name"
                   :image="user?.user_image"
                   class="-mr-[3px] outline outline-white"
@@ -83,62 +83,17 @@
 
                 <Avatar
                   v-if="sharedWithList.slice(3).length"
-                  size="lg"
+                  size="md"
                   :label="sharedWithList.slice(3).length.toString()"
                   class="-mr-[3px] outline outline-white"
                 />
               </div>
-
-              <!-- <Button class="ml-auto" @click="showShareDialog = true">
-                  Share
-                </Button> -->
             </div>
           </div>
-          <!-- <div v-if="entityTags.data?.length || entity.owner === 'You'">
-              <div class="text-base font-medium mb-4">Tags</div>
-              <div class="flex items-center justify-start flex-wrap gap-y-4">
-                <div
-                  v-if="entityTags.data?.length"
-                  class="flex flex-wrap gap-2 max-w-full"
-                >
-                  <Tag
-                    v-for="tag in entityTags?.data"
-                    :key="tag"
-                    :tag="tag"
-                    :entity="entity"
-                    @success="
-                      () => {
-                        userTags.fetch()
-                        entityTags.fetch()
-                      }
-                    "
-                  />
-                </div>
-                <span v-else-if="!addTag" class="text-gray-700 text-base">
-                  This file has no tags
-                </span>
-                <Button
-                  v-if="!addTag && entity.owner === 'You'"
-                  class="ml-auto"
-                  @click="addTag = true"
-                >
-                  Add tag
-                </Button>
-                <TagInput
-                  v-if="addTag"
-                  :entity="entity"
-                  :unadded-tags="unaddedTags"
-                  @success="
-                    () => {
-                      userTags.fetch()
-                      entityTags.fetch()
-                      addTag = false
-                    }
-                  "
-                  @close="addTag = false"
-                />
-              </div>
-            </div>  -->
+          <div>
+            <div class="text-base font-medium mb-4">Tags</div>
+            <TagInput class="min-w-full" :entity="entity" />
+          </div>
           <div>
             <div class="text-base font-medium mb-4">Properties</div>
             <div class="text-base grid grid-flow-row grid-cols-2 gap-y-3">
@@ -168,7 +123,7 @@
         <span
           class="inline-flex items-center gap-2.5 px-5 mb-5 text-gray-800 font-medium text-lg w-full"
         >
-          <Comment />
+          <!--  <Comment /> -->
           Comments
         </span>
         <div v-if="entity.allow_comments" class="pb-2 px-5">
@@ -181,7 +136,7 @@
               <Avatar
                 :label="comment.comment_by"
                 :image="comment.user_image"
-                class="h-7 w-7"
+                size="md"
               />
               <div class="ml-3">
                 <div class="flex items-center justify-start text-base gap-x-1">
@@ -201,7 +156,7 @@
             v-if="userId != 'Guest'"
             class="flex items-center justify-start py-2"
           >
-            <Avatar :label="fullName" :image="imageURL" class="h-7 w-7 mr-3" />
+            <Avatar :label="fullName" :image="imageURL" class="mr-3" />
             <div
               class="flex items-center border w-full bg-transparent rounded mr-1 focus-within:ring-2 ring-gray-400 hover:bg-gray-100 focus-within:bg-gray-100 group"
             >
@@ -227,6 +182,18 @@
           {{ entity.is_group ? "folder" : "file" }} by its owner.
         </div>
       </div>
+      <div
+        v-if="tab === 2"
+        class="max-h-[90vh] pt-4 pb-5 border-b overflow-y-auto overflow-x-hidden"
+      >
+        <span
+          class="inline-flex items-center gap-2.5 px-5 mb-5 text-gray-800 font-medium text-lg w-full"
+        >
+          <!-- <Clock /> -->
+          Activity
+        </span>
+        <ActivityTree v-if="showActivity" />
+      </div>
     </div>
     <div
       v-else
@@ -249,8 +216,9 @@
       ]"
       variant="minimal"
       @click="switchTab(0)"
-      ><Info
-    /></Button>
+    >
+      <Info />
+    </Button>
     <Button
       v-if="showComments"
       class="text-gray-600"
@@ -261,8 +229,22 @@
       ]"
       variant="minimal"
       @click="switchTab(1)"
-      ><Comment
-    /></Button>
+    >
+      <Comment />
+    </Button>
+    <Button
+      v-if="showActivity"
+      class="text-gray-600"
+      :class="[
+        tab === 2 && showInfoSidebar
+          ? 'text-black bg-gray-200'
+          : ' hover:bg-gray-50',
+      ]"
+      variant="minimal"
+      @click="switchTab(2)"
+    >
+      <Clock />
+    </Button>
   </div>
 </template>
 
@@ -276,8 +258,13 @@ import { thumbnail_getIconUrl } from "@/utils/getIconUrl"
 import Info from "./EspressoIcons/Info.vue"
 import File from "./EspressoIcons/File.vue"
 import Comment from "./EspressoIcons/Comment.vue"
+import Clock from "./EspressoIcons/Clock.vue"
+import ActivityTree from "./ActivityTree.vue"
+import Tag from "@/components/Tag.vue"
+import TagInput from "@/components/TagInput.vue"
 const store = useStore()
 const tab = ref(0)
+const addTag = ref(false)
 const newComment = ref("")
 const thumbnailLink = ref("")
 
@@ -331,6 +318,15 @@ const showComments = computed(() => {
   }
 })
 
+const showActivity = computed(() => {
+  if (entity.value.owner === "You") {
+    return true
+  } else if (entity.value.write) {
+    return true
+  }
+  return false
+})
+
 function switchTab(val) {
   if (store.state.showInfo == false) {
     store.commit("setShowInfo", !store.state.showInfo)
@@ -360,11 +356,9 @@ watch([entity, showInfoSidebar], ([newEntity, newShowInfoSidebar]) => {
     if (newShowInfoSidebar == true) {
       thumbnailUrl()
       comments.fetch({ entity_name: newEntity.name })
-      entityTags.fetch({ entity: newEntity.name })
       generalAccess.fetch({ entity_name: newEntity.name })
       userList.fetch({ entity_name: newEntity.name })
       groupList.fetch({ entity_name: newEntity.name })
-      userTags.fetch()
     }
   }
 })
@@ -414,26 +408,6 @@ const userList = createResource({
 
 const groupList = createResource({
   url: "drive.api.permissions.get_shared_user_group_list",
-  auto: false,
-})
-
-let userTags = createResource({
-  url: "drive.api.tags.get_user_tags",
-  onError(error) {
-    if (error.messages) {
-      console.log(error.messages)
-    }
-  },
-  auto: false,
-})
-
-let entityTags = createResource({
-  url: "drive.api.tags.get_entity_tags",
-  onError(error) {
-    if (error.messages) {
-      console.log(error.messages)
-    }
-  },
   auto: false,
 })
 

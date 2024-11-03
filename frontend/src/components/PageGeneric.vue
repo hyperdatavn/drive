@@ -1,67 +1,51 @@
 <template>
-  <div class="h-full w-full" @contextmenu="toggleEmptyContext">
+  <div
+    ref="container"
+    class="h-full w-full pt-3.5 px-4 pb-5 overflow-y-auto"
+    @mousedown.prevent="
+      (event) => {
+        dragSelectStart(event)
+      }
+    "
+    @contextmenu="toggleEmptyContext"
+  >
+    <DriveToolBar
+      :action-items="actionItems"
+      :column-headers="showSort ? columnHeaders : null"
+    />
     <FolderContentsError
       v-if="$resources.folderContents.error"
       :error="$resources.folderContents.error"
     />
+    <NoFilesSection
+      v-else-if="folderItems && folderItems.length === 0"
+      class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+      :icon="icon"
+      :primary-message="primaryMessage"
+      :secondary-message="secondaryMessage"
+    />
     <GridView
-      v-else-if="$store.state.view === 'grid'"
-      :folder-contents="folderItems"
+      v-else-if="folderItems && $store.state.view === 'grid'"
+      :folder-contents="groupedByFolder"
       :selected-entities="selectedEntities"
       :override-can-load-more="overrideCanLoadMore"
-      :folders="folders"
-      :files="files"
       @entity-selected="(selected) => (selectedEntities = selected)"
+      @show-entity-context="(data) => toggleEntityContext(data)"
       @open-entity="(entity) => openEntity(entity)"
-      @show-entity-context="(event) => toggleEntityContext(event)"
-      @show-empty-entity-context="(event) => toggleEmptyContext(event)"
-      @close-context-menu-event="closeContextMenu"
       @fetch-folder-contents="() => $resources.folderContents.fetch()"
       @update-offset="fetchNextPage"
-    >
-      <template #toolbar>
-        <DriveToolBar
-          :action-items="actionItems"
-          :column-headers="showSort ? columnHeaders : null"
-        />
-      </template>
-      <template #placeholder>
-        <NoFilesSection
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-          :icon="icon"
-          :primary-message="primaryMessage"
-          :secondary-message="secondaryMessage"
-        />
-      </template>
-    </GridView>
+    />
     <ListView
-      v-else
-      :folder-contents="folderItems"
+      v-else-if="folderItems && $store.state.view === 'list'"
+      :folder-contents="groupedByFolder"
       :selected-entities="selectedEntities"
       :override-can-load-more="overrideCanLoadMore"
       @entity-selected="(selected) => (selectedEntities = selected)"
+      @show-entity-context="(data) => toggleEntityContext(data)"
       @open-entity="(entity) => openEntity(entity)"
-      @show-entity-context="(event) => toggleEntityContext(event)"
-      @show-empty-entity-context="(event) => toggleEmptyContext(event)"
-      @close-context-menu-event="closeContextMenu"
       @fetch-folder-contents="() => $resources.folderContents.fetch()"
       @update-offset="fetchNextPage"
-    >
-      <template #toolbar>
-        <DriveToolBar
-          :action-items="actionItems"
-          :column-headers="showSort ? columnHeaders : null"
-        />
-      </template>
-      <template #placeholder>
-        <NoFilesSection
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-          :icon="icon"
-          :primary-message="primaryMessage"
-          :secondary-message="secondaryMessage"
-        />
-      </template>
-    </ListView>
+    />
     <EntityContextMenu
       v-if="showEntityContext"
       v-on-outside-click="closeContextMenu"
@@ -187,6 +171,12 @@
         }
       "
     />
+    <div
+      id="selectionElement"
+      class="absolute border-1 bg-gray-300 border-gray-400 opacity-50 mix-blend-multiply rounded"
+      :style="selectionElementStyle"
+      :hidden="!selectionCoordinates.x1"
+    />
   </div>
 </template>
 
@@ -212,7 +202,7 @@ import {
   folderDownload,
   selectedEntitiesDownload,
 } from "@/utils/folderDownload"
-import { RotateCcw, X } from "lucide-vue-next"
+import { RotateCcw } from "lucide-vue-next"
 import NewFolder from "./EspressoIcons/NewFolder.vue"
 import FileUpload from "./EspressoIcons/File-upload.vue"
 import FolderUpload from "./EspressoIcons/Folder-upload.vue"
@@ -228,6 +218,7 @@ import Trash from "./EspressoIcons/Trash.vue"
 import NewFile from "./EspressoIcons/NewFile.vue"
 import { toast } from "../utils/toasts.js"
 import { capture } from "@/telemetry"
+import { calculateRectangle, handleDragSelect } from "@/utils/dragSelect"
 
 export default {
   name: "PageGeneric",
@@ -328,9 +319,31 @@ export default {
     overrideCanLoadMore: false,
     clearAll: false,
     showCTADelete: false,
+    selectionElementStyle: {},
+    selectionCoordinates: { x1: 0, x2: 0, y1: 0, y2: 0 },
+    containerRect: null,
+    selectedIDs: null,
   }),
 
   computed: {
+    groupedByFolder() {
+      let output = {}
+      if (this.recents && this.folderItems) {
+        output = this.groupByAccessed(this.folderItems)
+      } else if (this.folderItems && this.foldersBefore) {
+        const folders = this.folderItems.filter((x) => x.is_group === 1)
+        const files = this.folderItems.filter((x) => x.is_group === 0)
+        if (folders.length > 0) {
+          output.Folders = folders
+        }
+        if (files.length > 0) {
+          output.Files = files
+        }
+      } else {
+        output = { "All Files": this.folderItems }
+      }
+      return output
+    },
     selectedEntities: {
       get() {
         return this.$store.state.entityInfo
@@ -341,6 +354,12 @@ export default {
     },
     filters() {
       return this.$store.state.activeFilters
+    },
+    tags() {
+      const activeTags = this.$store.state.activeTags
+      const tagNames = []
+      activeTags.map((tag) => tagNames.push(tag.name))
+      return tagNames
     },
     orderBy() {
       return this.$store.state.sortOrder.ascending
@@ -448,6 +467,7 @@ export default {
             label: "Preview",
             icon: Preview,
             onClick: () => {
+              console.log(this.selectedEntities[0].is_group)
               this.openEntity(this.selectedEntities[0])
             },
             isEnabled: () => {
@@ -516,7 +536,8 @@ export default {
             isEnabled: () => {
               return (
                 this.selectedEntities.length === 1 &&
-                this.selectedEntities[0].owner === "You"
+                (this.selectedEntities[0].owner === "You" ||
+                  this.selectedEntities[0].share)
               )
             },
           },
@@ -700,28 +721,19 @@ export default {
         ].filter((item) => item.isEnabled())
       }
     },
-    folders() {
-      return this.folderItems
-        ? this.folderItems.filter((x) => x.is_group === 1)
-        : []
-    },
-    files() {
-      if (this.foldersBefore) {
-        return this.folderItems
-          ? this.folderItems.filter((x) => x.is_group === 0)
-          : []
-      }
-      return this.folderItems
-    },
     foldersBefore() {
       return this.$store.state.foldersBefore
-    },
-    displayOrderedEntities() {
-      return this.folders.concat(this.files)
     },
   },
   watch: {
     filters: {
+      handler() {
+        this.pageOffset = 0
+        this.resetAndFetch()
+      },
+      deep: true,
+    },
+    tags: {
       handler() {
         this.pageOffset = 0
         this.resetAndFetch()
@@ -793,6 +805,9 @@ export default {
     )
     this.$store.commit("setHasWriteAccess", true)
     window.addEventListener("scroll", this.onScroll)
+    if (this.isEmpty) return
+    this.updateContainerRect()
+    visualViewport.addEventListener("resize", this.updateContainerRect)
   },
   unmounted() {
     this.folderItems = []
@@ -802,15 +817,63 @@ export default {
     window.removeEventListener("keydown", this.pasteListener)
     window.removeEventListener("keydown", this.deleteListener)
     window.removeEventListener("scroll", this.onScroll)
+    document.removeEventListener("keydown", this.selectAllListener)
+    document.removeEventListener("keydown", this.copyListener)
+    document.removeEventListener("keydown", this.cutListener)
   },
   methods: {
-    onScroll() {
+    dragSelectStart(event) {
+      if (this.showEntityContext) return
+      this.selectedIDs = null
+      this.selectedEntities = []
+      document.addEventListener("mousemove", this.dragSelectMove)
+      document.addEventListener("mouseup", this.dragSelectStop)
+      this.selectionCoordinates.x1 = event.clientX
+      this.selectionCoordinates.y1 = event.clientY
+      this.selectionCoordinates.x2 = event.clientX
+      this.selectionCoordinates.y2 = event.clientY
+      this.selectionElementStyle = calculateRectangle(this.selectionCoordinates)
+    },
+    dragSelectMove(event) {
+      if (this.isEmpty) return
+      if (event.which != 1 || !this.selectionCoordinates.x1) return
+      this.selectionCoordinates.x2 = Math.max(
+        this.containerRect.left,
+        Math.min(this.containerRect.right, event.clientX)
+      )
+      this.selectionCoordinates.y2 = Math.max(
+        this.containerRect.top,
+        Math.min(this.containerRect.bottom, event.clientY)
+      )
+      this.selectionElementStyle = calculateRectangle(this.selectionCoordinates)
+      const entityElements = this.$el.querySelectorAll(".entity")
+      const selectedEntities = handleDragSelect(
+        entityElements,
+        this.selectionCoordinates,
+        this.folderContents
+      )
+      this.selectedIDs = selectedEntities
+    },
+    dragSelectStop() {
+      if (this.selectedIDs) {
+        this.selectedEntities = this.folderItems.filter((item) =>
+          this.selectedIDs.has(item.name)
+        )
+      }
+      this.selectionCoordinates = { x1: 0, x2: 0, y1: 0, y2: 0 }
+      document.removeEventListener("mousemove", this.dragSelectMove)
+      document.removeEventListener("mouseup", this.dragSelectStop)
+    },
+    updateContainerRect() {
+      this.containerRect = this.$refs["container"]?.getBoundingClientRect()
+    },
+    /* onScroll() {
       const position = window.pageYOffset
       this.$store.dispatch("saveScrollPosition", {
         route: this.$route.fullPath,
         position,
       })
-    },
+    }, */
     fetchNextPage() {
       this.pageOffset = this.pageOffset + this.pageLength
       this.$resources.folderContents.fetch().then((data) => {
@@ -833,6 +896,7 @@ export default {
           recents_only: this.recents,
           favourites_only: this.favourites,
           file_kind_list: JSON.stringify(this.filters),
+          tag_list: JSON.stringify(this.tags),
         })
         .then((data) => {
           this.pageOffset = data.length
@@ -870,6 +934,7 @@ export default {
           recents_only: this.recents,
           favourites_only: this.favourites,
           file_kind_list: JSON.stringify(this.filters),
+          tag_list: JSON.stringify(this.tags),
         })
         .then((data) => {
           this.folderItems.splice(
@@ -977,6 +1042,37 @@ export default {
         })
       }
     },
+    groupByAccessed(entities) {
+      const today = new Date()
+      const grouped = {
+        Today: [],
+        "Earlier this week": [],
+        "Earlier this month": [],
+        "Earlier this year": [],
+        "Older than a year": [],
+      }
+      entities.forEach((file) => {
+        const modifiedDate = new Date(file.modified)
+        const yearDiff = today.getFullYear() - modifiedDate.getFullYear()
+        const monthDiff =
+          today.getMonth() - modifiedDate.getMonth() + yearDiff * 12 // Adjust for year difference
+        const dayDiff = Math.floor(
+          (today - modifiedDate) / (1000 * 60 * 60 * 24)
+        )
+        if (dayDiff === 0) {
+          grouped["Today"].push(file)
+        } else if (dayDiff <= 7) {
+          grouped["Earlier this week"].push(file)
+        } else if (monthDiff === 0) {
+          grouped["Earlier this month"].push(file)
+        } else if (yearDiff === 0) {
+          grouped["Earlier this year"].push(file)
+        } else {
+          grouped["Older than a year"].push(file)
+        }
+      })
+      return grouped
+    },
   },
   resources: {
     pasteEntity() {
@@ -1001,6 +1097,7 @@ export default {
           recents_only: this.recents,
           favourites_only: this.favourites,
           file_kind_list: JSON.stringify(this.filters),
+          tag_list: JSON.stringify(this.tags),
         },
         transform(data) {
           this.$resources.folderContents.error = null

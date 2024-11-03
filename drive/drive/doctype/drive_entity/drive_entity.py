@@ -16,14 +16,26 @@ from frappe.utils import cint
 from drive.api.format import mime_to_human
 from drive.api.files import get_ancestors_of
 from drive.api.files import generate_upward_path
+from drive.api.activity import create_new_activity_log
 
 
 class DriveEntity(Document):
     def before_save(self):
         self.version = self.version + 1
+
+    def before_insert(self):
         self.file_kind = mime_to_human(self.mime_type, self.is_group)
 
     def after_insert(self):
+        full_name = frappe.db.get_value("User", {"name": frappe.session.user}, ["full_name"])
+        message = f"{full_name} created {self.title}"
+        create_new_activity_log(
+            entity=self.name,
+            activity_type="create",
+            activity_message=message,
+            document_field="title",
+            field_new_value=self.title,
+        )
         self.inherit_permissions()
 
     def on_trash(self):
@@ -31,6 +43,7 @@ class DriveEntity(Document):
         frappe.db.delete("Drive Entity Log", {"entity_name": self.name})
         frappe.db.delete("Drive DocShare", {"share_name": self.name})
         frappe.db.delete("Drive Notification", {"notif_doctype_name": self.name})
+        frappe.db.delete("Drive Entity Activity Log", {"entity": self.name})
         if self.is_group or self.document:
             for child in self.get_children():
                 has_write_access = frappe.has_permission(
@@ -112,6 +125,7 @@ class DriveEntity(Document):
                 write=1,
                 share=1,
                 notify=0,
+                protected=1,
             )
 
         for permission in permissions:
@@ -125,6 +139,7 @@ class DriveEntity(Document):
                 everyone=permission.everyone,
                 public=permission.public,
                 notify=0,
+                protected=1,
             )
         self.allow_comments = parent_folder.allow_comments
         self.allow_download = parent_folder.allow_download
@@ -138,7 +153,7 @@ class DriveEntity(Document):
         for name in child_names:
             yield frappe.get_doc(self.doctype, name)
 
-    @frappe.whitelist()
+
     def move(self, new_parent=None):
         """
         Move file or folder to the new parent folder
@@ -157,7 +172,7 @@ class DriveEntity(Document):
         if not is_group:
             raise NotADirectoryError()
         for child in self.get_children():
-            if child.name == self.name or new_parent:
+            if child.name == self.name or child.name == new_parent:
                 frappe.throw(
                     "Cannot move into itself",
                     frappe.PermissionError,
@@ -325,7 +340,16 @@ class DriveEntity(Document):
                 FileExistsError,
             )
             return suggested_name
-
+        full_name = frappe.db.get_value("User", {"name": frappe.session.user}, ["full_name"])
+        message = f"{full_name} renamed {self.title} to {new_title}"
+        create_new_activity_log(
+            entity=self.name,
+            activity_type="rename",
+            activity_message=message,
+            document_field="title",
+            field_old_value=self.title,
+            field_new_value=new_title,
+        )
         self.title = new_title
         self.save()
         return self
@@ -372,11 +396,11 @@ class DriveEntity(Document):
         Toggle allow comments for entity
 
         """
-
-        self.db_set("allow_comments", new_value, commit=True, update_modified=False)
+        self.allow_comments = new_value
         if self.is_group:
             for child in self.get_children():
                 child.toggle_allow_comments(new_value)
+        self.save()
 
     @frappe.whitelist()
     def toggle_allow_download(self, new_value):
@@ -384,10 +408,11 @@ class DriveEntity(Document):
         Toggle allow download for entity
 
         """
-        self.db_set("allow_download", new_value, commit=True, update_modified=False)
+        self.allow_download = new_value
         if self.is_group:
             for child in self.get_children():
                 child.toggle_allow_download(new_value)
+        self.save()
 
     @frappe.whitelist()
     def share(
@@ -401,6 +426,7 @@ class DriveEntity(Document):
         everyone=0,
         public=0,
         notify=0,
+        protected=0,
     ):
         """
         Share this file or folder with the specified user.
@@ -466,12 +492,13 @@ class DriveEntity(Document):
 
         doc.update(
             {
-                # always add read, since you are adding!
+                # always add read, since you are adding
                 "read": 1,
                 "write": cint(write),
                 "share": cint(share),
                 "everyone": cint(everyone),
                 "public": cint(public),
+                "protected": cint(protected),
             }
         )
 
@@ -561,13 +588,13 @@ class DriveEntity(Document):
 
         if share_name:
             if frappe.session.user == user or frappe.session.user == self.owner:
-                frappe.db.delete("Drive DocShare", share_name)
+                frappe.delete_doc("Drive DocShare", share_name)
             else:
                 frappe.delete_doc("Drive DocShare", share_name, ignore_permissions=True)
         if self.is_group:
             for child in self.get_children():
                 child.unshare(user, user_type)
 
+
 def on_doctype_update():
     frappe.db.add_index("Drive Entity", ["title"])
-

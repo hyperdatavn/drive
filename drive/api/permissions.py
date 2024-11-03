@@ -9,6 +9,7 @@ from drive.api.files import get_children_count
 from drive.api.files import generate_upward_path
 from drive.api.files import get_shared_breadcrumbs
 from drive.api.files import get_ancestors_of
+from frappe.utils import getdate
 
 
 @frappe.whitelist()
@@ -38,6 +39,7 @@ def get_shared_with_list(entity_name):
             "user_name": ["not in", [frappe.session.user, entity_owner]],
             "everyone": 0,
             "public": 0,
+            "protected": 0,
         },
         order_by="name",
         fields=["user_name", "read", "write", "share"],
@@ -306,7 +308,13 @@ def get_entity_with_permissions(entity_name):
         frappe.throw("Specified file has been trashed by the owner")
 
     if entity.owner == frappe.session.user:
-        user_access = {'read': 1, 'write': 1, 'share': 1}
+        valid_until = frappe.db.get_value(
+            "Drive DocShare",
+            {"share_name": entity_name},
+            ["valid_until"],
+            as_dict=0,
+        )
+        user_access = {"read": 1, "write": 1, "share": 1, "valid_until": valid_until}
     else:
         user_access = get_user_access(entity.name)
 
@@ -346,9 +354,11 @@ def get_valid_breadcrumbs(entity, user_access):
     Determine user access and generate upward path (breadcrumbs).
     """
     file_path = generate_upward_path(entity.name)
+    if entity.owner != file_path[0].owner:
+        file_path.pop(0)
     if entity.owner != frappe.session.user:
-        permission_path = get_shared_breadcrumbs(user_access.docshare_name)       
-        x = file_path[:-len(permission_path)]
+        permission_path = get_shared_breadcrumbs(user_access.docshare_name)
+        x = file_path[: -len(permission_path)]
         for i in reversed(x):
             if i.owner == frappe.session.user:
                 permission_path.insert(0, i)            
@@ -393,7 +403,7 @@ def get_user_access(entity_name, user=None):
     :return: Dict of general access permissions (read, write)
     :rtype: frappe._dict or None
     """
-    fields = ["read", "write", "share", "name as docshare_name"]
+    fields = ["read", "write", "share", "name as docshare_name", "valid_until"]
     if not user:
         user = frappe.session.user
     if frappe.session.user != "Guest":
@@ -420,6 +430,10 @@ def get_user_access(entity_name, user=None):
             as_dict=1,
         )
         if everyone_access:
+            if frappe.db.exists(
+                "Has Role", {"role": "Drive Guest", "parent": frappe.session.user}
+            ):
+                return {"read": 0, "write": 0}
             return everyone_access
         public_access = frappe.db.get_value(
             "Drive DocShare",
@@ -486,7 +500,57 @@ def has_app_permission():
     if user == "Administrator":
         return True
 
-    roles_to_check = {"Drive Admin", "Drive User", "System Manager"}
+    roles_to_check = {"Drive Admin", "Drive User", "Drive Guest", "System Manager"}
     user_roles = frappe.get_roles(user)
 
     return not roles_to_check.isdisjoint(user_roles)
+
+
+@frappe.whitelist()
+def update_document_invalidation(entity_name, invalidation_date):
+    x = frappe.get_list(
+        "Drive DocShare",
+        filters={"share_name": entity_name, "share_doctype": "Drive Entity"},
+        order_by="creation desc",
+        fields=["name", "valid_until", "share_parent"],
+    )
+    for i in x:
+        doc = frappe.get_doc("Drive DocShare", i.name)
+        doc.valid_until = invalidation_date
+        doc.save()
+
+
+@frappe.whitelist()
+def update_document_invalidation(entity_name, invalidation_date):
+    x = frappe.get_list(
+        "Drive DocShare",
+        filters={"share_name": entity_name, "share_doctype": "Drive Entity"},
+        order_by="creation desc",
+        fields=["name", "valid_until", "share_parent"],
+    )
+    for i in x:
+        doc = frappe.get_doc("Drive DocShare", i.name)
+        doc.valid_until = invalidation_date
+        doc.save()
+
+
+def batch_delete_docshares(docshares):
+    for document in docshares:
+        frappe.delete_doc("Drive DocShare", document.name)
+
+
+def auto_delete_expired_docshares():
+    current_date = getdate()
+    expired_documents = frappe.get_list(
+        "Drive DocShare",
+        filters=[
+            ["valid_until", "<", current_date],
+            ["valid_until", "is", "set"],
+            ["protected", "!=", 1],
+        ],
+        order_by="creation desc",
+        fields=["name", "valid_until"],
+    )
+    if expired_documents:
+        frappe.enqueue(batch_delete_docshares, docshares=expired_documents)
+    return

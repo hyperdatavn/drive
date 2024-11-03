@@ -16,13 +16,12 @@ website_route_rules = [
 add_to_apps_screen = [
     {
         "name": "drive",
-        "logo": "assets/drive/frontend/favicon-310x310.png",
+        "logo": "/assets/drive/frontend/favicon-310x310.png",
         "title": "Drive",
         "route": "/drive",
         "has_permission": "drive.api.permissions.has_app_permission",
     }
 ]
-
 
 # Includes in <head>
 # ------------------
@@ -144,6 +143,7 @@ fixtures = [{"dt": "Role", "filters": [["role_name", "like", "Drive %"]]}]
 
 scheduler_events = {
     "daily": ["drive.api.files.auto_delete_from_trash"],
+    "daily": ["drive.api.permissions.auto_delete_expired_docshares"],
 }
 
 # Testing

@@ -37,7 +37,10 @@
           <Button
             v-if="$route.name === 'Document' || $route.name === 'File'"
             :variant="'solid'"
-            :disabled="$store.state.entityInfo[0]?.owner !== 'You'"
+            :disabled="
+              $store.state.entityInfo[0]?.owner !== 'You' ||
+              $store.state.elementExists
+            "
             class="bg-gray-200 rounded flex justify-center items-center px-1"
             @click="emitter.emit('showShareDialog')"
           >
@@ -49,7 +52,9 @@
           <Button
             v-else-if="$route.name === 'Recents'"
             class="line-clamp-1 truncate w-full"
-            :disabled="!currentViewEntites?.length"
+            :disabled="
+              !currentViewEntites?.length || $store.state.elementExists
+            "
             theme="red"
             :variant="'subtle'"
             @click="emitter.emit('showCTADelete')"
@@ -62,7 +67,9 @@
           <Button
             v-else-if="$route.name === 'Favourites'"
             class="line-clamp-1 truncate"
-            :disabled="!currentViewEntites?.length"
+            :disabled="
+              !currentViewEntites?.length || $store.state.elementExists
+            "
             theme="red"
             :variant="'subtle'"
             @click="emitter.emit('showCTADelete')"
@@ -75,7 +82,9 @@
           <Button
             v-else-if="$route.name === 'Trash'"
             class="line-clamp-1 truncate"
-            :disabled="!currentViewEntites?.length"
+            :disabled="
+              !currentViewEntites?.length || $store.state.elementExists
+            "
             theme="red"
             :variant="'subtle'"
             @click="emitter.emit('showCTADelete')"
@@ -85,13 +94,17 @@
             </template>
             Empty Trash
           </Button>
+
           <Dropdown
             v-else
             :options="newEntityOptions"
             placement="left"
             class="basis-5/12 lg:basis-auto"
           >
-            <Button variant="solid" :disabled="canUpload">
+            <Button
+              variant="solid"
+              :disabled="canUpload || $store.state.elementExists"
+            >
               <template #prefix>
                 <FeatherIcon name="upload" class="w-4" />
               </template>
@@ -102,7 +115,10 @@
             </Button>
           </Dropdown>
         </div>
-        <div v-if="!isLoggedIn" class="ml-auto">
+        <div
+          v-if="!isLoggedIn && $store.state.user.fullName === 'Guest'"
+          class="ml-auto"
+        >
           <Button variant="solid" @click="$router.push({ name: 'Login' })">
             Sign In
           </Button>
@@ -144,6 +160,7 @@ import {
   folderDownload,
   selectedEntitiesDownload,
 } from "@/utils/folderDownload"
+import Printer from "./EspressoIcons/Printer.vue"
 import Share from "./EspressoIcons/Share.vue"
 import Star from "./EspressoIcons/Star.vue"
 import Rename from "./EspressoIcons/Rename.vue"
@@ -243,6 +260,14 @@ export default {
     }
   },
   computed: {
+    isButtonDisabled() {
+      if (document.getElementById("headlessui-portal-root")) {
+        console.log("TRUE")
+        return true
+      }
+      console.log(document.getElementById("headlessui-portal-root"))
+      return false
+    },
     selectedEntities() {
       if (this.$route.name === "Folder") {
         return this.$store.state.currentFolder
@@ -269,6 +294,24 @@ export default {
                   this.selectedEntities[0]?.owner === "You"
                 )
               }
+            }
+          },
+        },
+        {
+          label: "Print",
+          icon: Printer,
+          onClick: () => {
+            this.emitter.emit("printFile")
+          },
+          isEnabled: () => {
+            const validRoutes = ["File", "Document"]
+            const validFileKinds = ["Document", "Image", "PDF"]
+            if (
+              validRoutes.includes(this.$route.name) &&
+              this.selectedEntities[0]?.allow_download &&
+              validFileKinds.includes(this.selectedEntities[0]?.file_kind)
+            ) {
+              return true
             }
           },
         },

@@ -23,10 +23,40 @@
             minHeight: $refs.shareMain?.clientHeight + 'px',
           }"
         >
-          <span class="text-gray-600 font-medium text-base">Settings</span>
-          <div class="flex flex-col space-y-0 mt-4">
-            <Switch v-model="allowComments" label="Allow Comments" />
-            <Switch v-model="allowDownload" label="Allow Downloading" />
+          <div class="flex flex-col space-y-4">
+            <div>
+              <span class="mb-0.5 block text-sm leading-4 text-gray-700"
+                >Preferences</span
+              >
+              <Switch v-model="allowComments" label="Allow Comments" />
+              <Switch v-model="allowDownload" label="Allow Downloading" />
+            </div>
+            <div>
+              <DatePicker
+                v-model="invalidAfter"
+                variant="subtle"
+                label="Access Until"
+              ></DatePicker>
+              <span
+                v-if="invalidateAfterError"
+                class="block text-xs leading-4 text-red-500 px-0.5 py-1.5"
+              >
+                {{ invalidateAfterError }}
+              </span>
+              <span
+                v-else-if="invalidAfter"
+                class="block text-xs leading-4 text-gray-700 px-0.5 py-1.5"
+              >
+                Selected documents will remain shared until
+                {{ useDateFormat(invalidAfter, "YY-MM-DD") }}
+              </span>
+              <span
+                v-else
+                class="block text-xs leading-4 text-gray-700 px-0.5 py-1.5"
+              >
+                Selected documents will remain shared indefinitely
+              </span>
+            </div>
           </div>
         </div>
         <div
@@ -40,13 +70,13 @@
             class="grid grid-flow-col-dense grid-cols-10 items-start justify-start mb-8 px-4 sm:px-6"
           >
             <GeneralAccess
-              size="xl"
+              size="lg"
               class="col-span-1 justify-self-start row-start-1 row-end-1"
               :general-access="generalAccess"
             />
             <Popover
               v-slot="{ open, close }"
-              class="text-gray-700 relative flex-shrink-0 justify-self-start col-span-6"
+              class="text-gray-700 relative flex-shrink-0 justify-self-start col-span-6 mb-1"
             >
               <PopoverButton
                 class="flex gap-1 px-2 focus:outline-none bg-gray-100 rounded h-7 items-center text-base w-auto justify-between"
@@ -72,7 +102,8 @@
                     @click="
                       ;(generalAccess.public = 0),
                         (generalAccess.everyone = 1),
-                        close()
+                        close(),
+                        updateGeneralAccess()
                     "
                   >
                     Organization
@@ -83,7 +114,8 @@
                     @click="
                       ;(generalAccess.public = 1),
                         (generalAccess.everyone = 0),
-                        close()
+                        close(),
+                        updateGeneralAccess()
                     "
                   >
                     Public
@@ -96,7 +128,8 @@
                         (generalAccess.read = 0),
                         (generalAccess.write = 0),
                         (generalAccess.everyone = 0),
-                        close()
+                        close(),
+                        updateGeneralAccess()
                     "
                   >
                     Restricted
@@ -130,7 +163,8 @@
                     @click="
                       generalAccess.read === 1,
                         (generalAccess.write = 0),
-                        close()
+                        close(),
+                        updateGeneralAccess()
                     "
                   >
                     Can View
@@ -146,7 +180,8 @@
                     @click="
                       generalAccess.read === 1,
                         (generalAccess.write = 1),
-                        close()
+                        close(),
+                        updateGeneralAccess()
                     "
                   >
                     Can Edit
@@ -160,7 +195,7 @@
               ></PopoverPanel>
             </Popover>
             <span
-              class="text-xs text-gray-700 row-start-2 row-end-2 col-span-6 col-start-2"
+              class="pl-0.5 text-xs text-gray-700 row-start-2 row-end-2 col-span-6 col-start-2"
             >
               {{ accessMessage }}
             </span>
@@ -174,7 +209,7 @@
             @add-new-users="addNewUsers"
           />
 
-          <div class="overflow-y-auto px-4 sm:px-6">
+          <div class="overflow-y-auto max-h-96 px-4 sm:px-6">
             <div
               v-if="!$resources.sharedWith.loading"
               class="text-base space-y-4 mb-5"
@@ -183,7 +218,7 @@
               <!-- Owner -->
               <div class="flex items-center gap-x-3">
                 <Avatar
-                  size="xl"
+                  size="lg"
                   :label="$resources.sharedWith.data.owner.full_name"
                   :image="$resources.sharedWith.data.owner.user_image"
                 />
@@ -191,7 +226,7 @@
                   <span class="text-gray-900">{{
                     $resources.sharedWith.data.owner.full_name
                   }}</span>
-                  <span class="text-gray-700">{{
+                  <span class="text-gray-700 text-sm">{{
                     $resources.sharedWith.data.owner.email
                   }}</span>
                 </div>
@@ -207,7 +242,7 @@
                 class="flex items-center gap-x-3"
               >
                 <Avatar
-                  size="xl"
+                  size="lg"
                   :label="user.user_name"
                   :image="user.user_image"
                 />
@@ -215,7 +250,7 @@
                   <span class="text-gray-900">{{
                     user.full_name ? user.full_name : user.user_name
                   }}</span>
-                  <span class="text-gray-700">{{
+                  <span class="text-gray-700 text-sm">{{
                     user.full_name ? user.user_name : ""
                   }}</span>
                 </div>
@@ -260,7 +295,7 @@
                 :key="group.user_name"
                 class="flex items-center gap-x-3"
               >
-                <Avatar size="xl" :label="group.user_name" />
+                <Avatar size="lg" :label="group.user_name" />
                 <div class="flex items-start flex-col justify-start">
                   <span class="text-gray-900">{{ group.user_name }}</span>
                 </div>
@@ -330,6 +365,9 @@ import Link from "@/components/EspressoIcons/Link.vue"
 import Diamond from "@/components/EspressoIcons/Diamond.vue"
 import Check from "@/components/EspressoIcons/Check.vue"
 import { capture } from "@/telemetry"
+import DatePicker from "frappe-ui/src/components/DatePicker.vue"
+import { formatDate } from "@/utils/format"
+import { useDateFormat } from "@vueuse/core"
 
 export default {
   name: "ShareDialog",
@@ -347,6 +385,7 @@ export default {
     AccessButton,
     Link,
     Switch,
+    DatePicker,
   },
   props: {
     modelValue: {
@@ -373,6 +412,8 @@ export default {
         everyone: false,
         public: false,
       },
+      invalidAfter: null,
+      invalidateAfterError: null,
       allowComments: true,
       allowDownload: true,
       saveLoading: false,
@@ -412,20 +453,22 @@ export default {
     },
   },
   watch: {
-    generalAccess: {
-      handler() {
-        this.$resources.updateAccess.submit({
-          method: "set_general_access",
-          entity_name: this.entityName,
-          read: this.generalAccess.read,
-          write: this.generalAccess.write,
-          share_name: this.generalAccess.name,
-          share: this.generalAccess.share,
-          public: this.generalAccess.public,
-          everyone: this.generalAccess.everyone,
-        })
+    invalidAfter: {
+      handler(newVal) {
+        const date = new Date(newVal + " UTC")
+        const unix = Math.floor(date.getTime() / 1000)
+        const now = Math.floor(Date.now() / 1000)
+        if (unix < now) {
+          this.invalidAfter = null
+          this.invalidateAfterError = "Cannot select an earlier date"
+        } else {
+          this.invalidateAfterError = null
+          this.$resources.updateInvalidAfter.submit({
+            entity_name: this.entityName,
+            invalidation_date: newVal,
+          })
+        }
       },
-      deep: true,
     },
     allowComments: {
       handler() {
@@ -439,6 +482,20 @@ export default {
     },
   },
   methods: {
+    formatDate,
+    useDateFormat,
+    updateGeneralAccess() {
+      this.$resources.updateAccess.submit({
+        method: "set_general_access",
+        entity_name: this.entityName,
+        read: this.generalAccess.read,
+        write: this.generalAccess.write,
+        share_name: this.generalAccess.name,
+        share: this.generalAccess.share,
+        public: this.generalAccess.public,
+        everyone: this.generalAccess.everyone,
+      })
+    },
     addNewUsers(data) {
       for (let i in data.users) {
         this.$resources.share.submit({
@@ -499,6 +556,9 @@ export default {
         },
         onSuccess(data) {
           this.entity = data
+          if (data.valid_until) {
+            this.invalidAfter = data.valid_until
+          }
           this.allowComments = !!data.allow_comments
           this.allowDownload = !!data.allow_download
         },
@@ -544,6 +604,24 @@ export default {
           entity_name: this.entityName,
           method: "toggle_allow_comments",
           new_value: !this.allowComments,
+        },
+        onSuccess() {
+          this.$emit("success")
+        },
+        onError(error) {
+          if (error.messages) {
+            console.log(error.messages)
+          }
+        },
+      }
+    },
+    updateInvalidAfter() {
+      return {
+        url: "drive.api.permissions.update_document_invalidation",
+        debounce: 500,
+        params: {
+          entity_name: this.entityName,
+          invalidation_date: this.invalidAfter,
         },
         onSuccess() {
           this.$emit("success")
