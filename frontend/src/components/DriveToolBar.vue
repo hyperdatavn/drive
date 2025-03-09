@@ -1,13 +1,13 @@
 <template>
   <div
-    ondragstart="return false;"
-    ondrop="return false;"
-    class="flex gap-x-3 flex-wrap justify-start items-center w-full min-h-8 mb-6"
+    class="flex gap-x-3 flex-wrap justify-start items-center w-full px-2 my-3"
   >
-    <div class="flex gap-3 w-full justify-start items-center flex-wrap">
+    <div class="flex w-full justify-start items-center flex-wrap">
+      <Breadcrumbs :items="$store.state.breadcrumbs" />
+
       <div
         v-if="$route.name === 'Shared'"
-        class="bg-gray-100 rounded-[10px] space-x-0.5 h-7 flex items-center px-0.5 py-1"
+        class="ml-5 bg-gray-100 rounded-[10px] space-x-0.5 h-7 flex items-center px-0.5 py-1"
       >
         <Button
           variant="ghost"
@@ -19,7 +19,7 @@
           ]"
           @click="$store.commit('toggleShareView', 'with')"
         >
-          Shared with You
+          With you
         </Button>
         <Button
           variant="ghost"
@@ -31,32 +31,21 @@
           ]"
           @click="$store.commit('toggleShareView', 'by')"
         >
-          Shared by You
+          By you
         </Button>
       </div>
-      <Dropdown :options="filterItems" placement="left">
-        <Button
-          >Filter
-          <template #prefix>
-            <Filter />
-          </template>
-          <template #suffix>
-            <ChevronDown />
-          </template>
-        </Button>
-      </Dropdown>
-      <div class="flex flex-wrap items-start justify-start gap-1">
+      <div class="flex flex-wrap items-start justify-end gap-1 ml-3">
         <div v-for="(item, index) in activeFilters" :key="index">
           <div class="flex items-center border rounded pl-2 py-1 h-7 text-base">
-            <component :is="item"></component>
-            <span class="text-sm ml-2">{{ item }}</span>
+            <component :is="item.icon"></component>
+            <span class="text-sm ml-2">{{ item.label }}</span>
 
             <Button
               variant="minimal"
               @click="
                 item.title
-                  ? $store.state.activeTags.splice(index, 1)
-                  : $store.state.activeFilters.splice(index, 1)
+                  ? activeTags.splice(index, 1)
+                  : activeFilters.splice(index, 1)
               "
             >
               <template #icon>
@@ -97,7 +86,8 @@
           </div>
         </div>
       </div>
-      <div class="ml-auto flex gap-x-1 items-center">
+
+      <div class="ml-auto flex gap-x-3 items-center">
         <Dropdown
           v-if="columnHeaders"
           :options="orderByItems"
@@ -110,16 +100,28 @@
               @click.stop="toggleAscending"
             >
               <DownArrow
-                :class="{ '[transform:rotateX(180deg)]': ascending }"
+                :class="{ '[transform:rotateX(180deg)]': sortOrder.ascending }"
                 class="h-3.5"
               />
             </Button>
             <Button class="text-sm h-7 rounded-l-none flex-1 md:block">
-              {{ orderByLabel }}
+              {{ sortOrder.label }}
             </Button>
           </div>
         </Dropdown>
+        <Dropdown :options="filterItems" placement="right">
+          <Button
+            >Filter
+            <template #prefix>
+              <Filter />
+            </template>
+            <template #suffix>
+              <ChevronDown />
+            </template>
+          </Button>
+        </Dropdown>
         <div
+          v-if="false"
           class="bg-gray-100 rounded-md space-x-0.5 h-7 px-0.5 py-1 flex items-center"
         >
           <Button
@@ -147,13 +149,34 @@
             <ViewList />
           </Button>
         </div>
+
+        <div v-if="!$store.getters.isLoggedIn" class="ml-2">
+          <Button variant="solid" @click="$router.push({ name: 'Login' })">
+            Sign In
+          </Button>
+        </div>
+        <template v-for="button of possibleButtons" :key="button.route">
+          <Button
+            v-if="$route.name === button.route"
+            class="line-clamp-1 truncate w-full"
+            :disabled="!button.entities.data.length"
+            variant="subtle"
+            :theme="button.theme || 'gray'"
+            @click="emitter.emit('showCTADelete')"
+          >
+            <template #prefix>
+              <FeatherIcon :name="button.icon" class="w-4" />
+            </template>
+            {{ button.label }}
+          </Button>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
-<script>
-import { FeatherIcon, Button, Dropdown } from "frappe-ui"
+<script setup>
+import { FeatherIcon, Button, Dropdown, Breadcrumbs } from "frappe-ui"
 import ViewGrid from "@/components/EspressoIcons/ViewGrid.vue"
 import ViewList from "@/components/EspressoIcons/ViewList.vue"
 import DownArrow from "./EspressoIcons/DownArrow.vue"
@@ -169,164 +192,107 @@ import Image from "./MimeIcons/Image.vue"
 import Video from "./MimeIcons/Video.vue"
 import PDF from "./MimeIcons/PDF.vue"
 import Unknown from "./MimeIcons/Unknown.vue"
+import { computed, onMounted, watch, ref } from "vue"
+import { useStore } from "vuex"
+import { getRecents, getFavourites, getTrash } from "@/resources/files"
 
-export default {
-  name: "DriveToolBar",
-  components: {
-    Button,
-    Dropdown,
-    ViewList,
-    ViewGrid,
-    DownArrow,
-    Filter,
-    ChevronDown,
-    FeatherIcon,
-    Folder,
-    Archive,
-    Document,
-    Spreadsheet,
-    Presentation,
-    Audio,
-    Image,
-    Video,
-    PDF,
-    Unknown,
+const store = useStore()
+const props = defineProps({
+  columnHeaders: Array,
+  getEntitities: Object,
+})
+const sortOrder = ref(store.state.sortOrder)
+watch(sortOrder, (val) => store.commit("setSortOrder", val))
+const activeFilters = ref(store.state.activeFilters)
+watch(activeFilters.value, (val) => store.commit("setActiveFilters", val))
+
+const activeTags = computed(() => store.state.activeTags)
+const orderByItems = computed(() => {
+  return props.columnHeaders.map((header) => ({
+    ...header,
+    onClick: () =>
+      (sortOrder.value = {
+        field: header.field,
+        label: header.label,
+        ascending: sortOrder.value?.ascending,
+      }),
+  }))
+})
+const TYPES = [
+  {
+    label: "Folder",
+    icon: Folder,
   },
-  props: {
-    breadcrumbs: {
-      type: Array,
-      default: null,
-    },
-    actionItems: {
-      type: Array,
-      default: null,
-    },
-    columnHeaders: {
-      type: Array,
-      default: null,
-    },
-    actionLoading: {
-      type: Boolean,
-      default: false,
-    },
+  {
+    label: "Image",
+    icon: Image,
   },
-  computed: {
-    activeFilters() {
-      return this.$store.state.activeFilters
-    },
-    activeTags() {
-      return this.$store.state.activeTags
-    },
-    orderByField() {
-      return this.$store.state.sortOrder.field
-    },
-    orderByLabel() {
-      return this.$store.state.sortOrder.label
-    },
-    ascending() {
-      return this.$store.state.sortOrder.ascending
-    },
-    orderByItems() {
-      return this.columnHeaders.map((header) => ({
-        ...header,
-        onClick: () => {
-          this.$store.commit("setSortOrder", {
-            field: header.field,
-            label: header.label,
-            ascending: this.ascending,
-          })
-        },
-      }))
-    },
-    filterItems() {
-      return [
-        {
-          label: "Folder",
-          icon: Folder,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Folder")
-          },
-        },
-        {
-          label: "Image",
-          icon: Image,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Image")
-          },
-        },
-        {
-          label: "Audio",
-          icon: Audio,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Audio")
-          },
-        },
-        {
-          label: "Video",
-          icon: Video,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Video")
-          },
-        },
-        {
-          label: "PDF",
-          icon: PDF,
-          onClick: () => {
-            this.$store.state.activeFilters.push("PDF")
-          },
-        },
-        {
-          label: "Document",
-          icon: Document,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Document")
-          },
-        },
-        {
-          label: "Spreadsheet",
-          icon: Spreadsheet,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Spreadsheet")
-          },
-        },
-        {
-          label: "Archive",
-          icon: Archive,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Archive")
-          },
-        },
-        {
-          label: "Presentation",
-          icon: Presentation,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Presentation")
-          },
-        },
-        {
-          label: "Unknown",
-          icon: Unknown,
-          onClick: () => {
-            this.$store.state.activeFilters.push("Unknown")
-          },
-        },
-      ].filter((item) => !this.activeFilters.includes(item.label))
-    },
+  {
+    label: "Audio",
+    icon: Audio,
   },
-  mounted() {
-    for (let element of this.$el.getElementsByTagName("button")) {
-      element.classList.remove("focus:ring-2", "focus:ring-offset-2")
-    }
+  {
+    label: "Video",
+    icon: Video,
   },
-  methods: {
-    toggleAscending() {
-      this.$store.commit("setSortOrder", {
-        field: this.orderByField,
-        label: this.orderByLabel,
-        ascending: !this.ascending,
-      })
-    },
+  {
+    label: "PDF",
+    icon: PDF,
   },
+  {
+    label: "Document",
+    icon: Document,
+  },
+  {
+    label: "Spreadsheet",
+    icon: Spreadsheet,
+  },
+  {
+    label: "Archive",
+    icon: Archive,
+  },
+  {
+    label: "Presentation",
+    icon: Presentation,
+  },
+  {
+    label: "Unknown",
+    icon: Unknown,
+  },
+]
+TYPES.forEach((t) => {
+  t.onClick = () => activeFilters.value.push(t)
+})
+const filterItems = computed(() => {
+  return TYPES.filter((item) => !activeFilters.value.includes(item.label))
+})
+onMounted(() => {
+  for (let element of document.getElementsByTagName("button")) {
+    element.classList.remove("focus:ring-2", "focus:ring-offset-2")
+  }
+})
+const toggleAscending = () => {
+  sortOrder.value = {
+    field: sortOrder.value.field,
+    label: sortOrder.value.label,
+    ascending: !sortOrder.value.ascending,
+  }
 }
+
+const possibleButtons = [
+  { route: "Recents", label: "Clear", icon: "clock", entities: getRecents },
+  {
+    route: "Favourites",
+    label: "Clear",
+    icon: "star",
+    entities: getFavourites,
+  },
+  {
+    route: "Trash",
+    label: "Empty Trash",
+    icon: "trash",
+    entities: getTrash,
+    theme: "red",
+  },
+]
 </script>
-./EspressoIcons/Sort.vue

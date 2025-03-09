@@ -18,13 +18,6 @@
   ],
   "fields": [
     {
-      "fieldname": "title",
-      "fieldtype": "Text",
-      "in_list_view": 1,
-      "label": "Title",
-      "reqd": 1
-    },
-    {
       "default": "AAA=",
       "fieldname": "content",
       "fieldtype": "Long Text",
@@ -55,39 +48,24 @@
       "fieldname": "version",
       "fieldtype": "Int",
       "label": "Version"
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Title",
+      "options": "Drive Entity_",
+      "reqd": 1
     }
   ],
   "links": [],
-  "modified": "2024-10-11 18:16:23.389560",
+  "modified": "2025-02-13 15:15:13.483049",
   "modified_by": "Administrator",
   "module": "Drive",
   "name": "Drive Document",
   "naming_rule": "Random",
   "owner": "Administrator",
   "permissions": [
-    {
-      "read": 1,
-      "role": "Guest",
-      "write": 1
-    },
-    {
-      "create": 1,
-      "delete": 1,
-      "export": 1,
-      "read": 1,
-      "role": "Drive User",
-      "share": 1,
-      "write": 1
-    },
-    {
-      "create": 1,
-      "delete": 1,
-      "export": 1,
-      "read": 1,
-      "role": "Drive Admin",
-      "share": 1,
-      "write": 1
-    },
     {
       "create": 1,
       "delete": 1,
@@ -96,12 +74,18 @@
       "print": 1,
       "read": 1,
       "report": 1,
-      "role": "Drive Guest",
+      "role": "All",
       "share": 1,
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Guest",
       "write": 1
     }
   ],
   "sort_field": "modified",
   "sort_order": "DESC",
-  "states": []
+  "states": [],
+  "title_field": "title"
 }

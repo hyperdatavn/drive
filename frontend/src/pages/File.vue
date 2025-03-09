@@ -21,9 +21,6 @@
       <Button :variant="'ghost'" @click="enterFullScreen">
         <Scan class="w-4" />
       </Button>
-      <!--  <Button :variant="'ghost'">
-      <FileSignature class="w-4"/>
-    </Button> -->
       <Button
         :disabled="!nextEntity?.name"
         :variant="'ghost'"
@@ -52,11 +49,11 @@ import {
 import { Button } from "frappe-ui"
 import FileRender from "@/components/FileRender.vue"
 import { createResource } from "frappe-ui"
-import { formatSize, formatDate } from "@/utils/format"
 import { useRouter } from "vue-router"
 import { Scan } from "lucide-vue-next"
 import { onKeyStroke } from "@vueuse/core"
 import ShareDialog from "@/components/ShareDialog/ShareDialog.vue"
+import { prettyData, setBreadCrumbs } from "@/utils/files"
 
 const router = useRouter()
 const store = useStore()
@@ -69,16 +66,12 @@ const props = defineProps({
   },
 })
 
-const entity = ref(null)
 const showShareDialog = ref(false)
 const currentEntity = ref(props.entityName)
-const userId = computed(() => {
-  return store.state.auth.user_id
-})
 
 const filteredEntities = computed(() => {
-  if (store.state.currentViewEntites.length) {
-    return store.state.currentViewEntites.filter(
+  if (store.state.currentEntitites.length) {
+    return store.state.currentEntitites.filter(
       (item) => item.is_group === 0 && item.mime_type !== "frappe_doc"
     )
   } else {
@@ -86,19 +79,13 @@ const filteredEntities = computed(() => {
   }
 })
 
-const currentEntityIndex = computed(() => {
+const index = computed(() => {
   return filteredEntities.value.findIndex(
     (item) => item.name === props.entityName
   )
 })
-
-const prevEntity = computed(() => {
-  return filteredEntities.value[currentEntityIndex.value - 1]
-})
-
-const nextEntity = computed(() => {
-  return filteredEntities.value[currentEntityIndex.value + 1]
-})
+const prevEntity = computed(() => filteredEntities.value[index.value - 1])
+const nextEntity = computed(() => filteredEntities.value[index.value + 1])
 
 function fetchFile(currentEntity) {
   file.fetch({ entity_name: currentEntity }).then(() => {
@@ -129,7 +116,6 @@ onKeyStroke("ArrowLeft", (e) => {
   e.preventDefault()
   scrollEntity(true)
 })
-
 onKeyStroke("ArrowRight", (e) => {
   e.preventDefault()
   scrollEntity()
@@ -138,46 +124,13 @@ onKeyStroke("ArrowRight", (e) => {
 let file = createResource({
   url: "drive.api.permissions.get_entity_with_permissions",
   params: { entity_name: props.entityName },
-  transform(data) {
-    entity.value = data
-    data.size_in_bytes = data.file_size
-    data.file_size = formatSize(data.file_size)
-    data.modified = formatDate(data.modified)
-    data.creation = formatDate(data.creation)
-    data.owner = data.owner === userId.value ? "You" : data.owner
-    store.commit("setEntityInfo", [data])
+  transform(entity) {
+    store.commit("setEntityInfo", [entity])
+    entity = prettyData([entity])
   },
   onSuccess(data) {
-    let currentBreadcrumbs = [
-      {
-        label: "Shared",
-        route: "/shared",
-      },
-    ]
-    const root_item = data.breadcrumbs[0]
-    if (root_item.name === store.state.homeFolderID) {
-      currentBreadcrumbs = [
-        {
-          label: "Home",
-          route: "/home",
-        },
-      ]
-      data.breadcrumbs.shift()
-    }
-    data.breadcrumbs.forEach((item, idx) => {
-      if (idx === data.breadcrumbs.length - 1) {
-        currentBreadcrumbs.push({
-          label: item.title,
-          route: "/file/" + item.name,
-        })
-      } else {
-        currentBreadcrumbs.push({
-          label: item.title,
-          route: "/folder/" + item.name,
-        })
-      }
-    })
-    store.commit("setCurrentBreadcrumbs", currentBreadcrumbs)
+    store.commit("setActiveEntity", data)
+    setBreadCrumbs(data.breadcrumbs, data.is_private)
   },
   onError(error) {
     if (error && error.exc_type === "PermissionError") {
@@ -194,13 +147,13 @@ let file = createResource({
 
 function scrollEntity(negative = false) {
   currentEntity.value = negative ? prevEntity.value : nextEntity.value
-  fetchFile(currentEntity.value.name)
+  if (currentEntity.value) fetchFile(currentEntity.value.name)
 }
 
 onMounted(() => {
   fetchFile(props.entityName)
-  realtime.doc_subscribe("Drive Entity", props.entityName)
-  realtime.doc_open("Drive Entity", props.entityName)
+  realtime.doc_subscribe("Drive File", props.entityName)
+  realtime.doc_open("Drive File", props.entityName)
   realtime.on("doc_viewers", (data) => {
     store.state.connectedUsers = data.users
     userInfo.submit({ users: JSON.stringify(data.users) })
@@ -209,15 +162,15 @@ onMounted(() => {
     store.commit("setIsSidebarExpanded", false)
   }
   emitter.on("showShareDialog", () => {
-    showShareDialog.value = true
+    showShareDialog.value = "s"
   })
 })
 
 onBeforeUnmount(() => {
   realtime.off("doc_viewers")
   store.state.connectedUsers = []
-  realtime.doc_close("Drive Entity", file.data?.name)
-  realtime.doc_unsubscribe("Drive Entity", file.data?.name)
+  realtime.doc_close("Drive File", file.data?.name)
+  realtime.doc_unsubscribe("Drive File", file.data?.name)
   store.commit("setEntityInfo", [])
 })
 

@@ -19,7 +19,6 @@ add_to_apps_screen = [
         "logo": "/assets/drive/frontend/favicon-310x310.png",
         "title": "Drive",
         "route": "/drive",
-        "has_permission": "drive.api.permissions.has_app_permission",
     }
 ]
 
@@ -103,16 +102,8 @@ after_install = "drive.install.after_install"
 # }
 #
 
-permission_query_conditions = {
-    "Drive Entity": "drive.overrides.filter_drive_entity",
-    "Drive Document": "drive.overrides.filter_drive_document",
-    "Drive Favourite": "drive.overrides.filter_drive_favourite",
-    "Drive Entity Log": "drive.overrides.filter_drive_recent",
-    "Drive Notification": "drive.overrides.filter_drive_notif",
-}
-
 has_permission = {
-    "Drive Entity": "drive.overrides.user_has_permission",
+    "Drive File": "drive.api.permissions.user_has_permission",
 }
 
 # DocType Class
@@ -136,7 +127,7 @@ has_permission = {
 # }
 
 
-fixtures = [{"dt": "Role", "filters": [["role_name", "like", "Drive %"]]}]
+# fixtures = [{"dt": "Role", "filters": [["role_name", "like", "Drive %"]]}]
 
 # Scheduled Tasks
 # ---------------
@@ -200,3 +191,10 @@ scheduler_events = {
 # auth_hooks = [
 # 	"drive.auth.validate"
 # ]
+
+doc_events = {
+    "User": {
+        # will run after any DocType record is inserted into database
+        "before_save": "drive.utils.users.signup_flow"
+    },
+}

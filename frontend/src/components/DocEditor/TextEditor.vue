@@ -247,25 +247,22 @@ export default {
       return this.isWritable && this.tempEditable
     },
     bubbleMenuButtons() {
-      if (this.entity.owner === "You" || this.entity.write) {
-        let buttons = [
+      let buttons = []
+      if (this.entity.write) {
+        buttons.push(
           "Bold",
           "Italic",
           "Underline",
           "Strikethrough",
           "Code",
           "Separator",
-          "Link",
-          "Separator",
-          "NewAnnotation",
-          //"Comment",
-        ]
-        return buttons.map(createEditorButton)
-      } else if (this.entity.allow_comments) {
-        let buttons = ["Comment"]
-        return buttons.map(createEditorButton)
+          "Link"
+        )
       }
-      return []
+      if (this.entity.owner == "You") {
+        buttons.push("Separator", "NewAnnotation")
+      }
+      return buttons.map(createEditorButton)
     },
     currentUserName() {
       return this.$store.state.user.fullName
@@ -395,7 +392,7 @@ export default {
       autofocus: "start",
       editorProps: {
         attributes: {
-          class: normalizeClass([`espresso-prose`]),
+          class: normalizeClass([`prose prose-sm`]),
         },
         clipboardTextParser: (text, $context) => {
           if (!detectMarkdown(text)) return
@@ -592,10 +589,10 @@ export default {
     this.provider.on("synced", (e) => {
       this.synced = e.synced
     })
-    this.$realtime.doc_subscribe("Drive Entity", this.entityName)
-    this.$realtime.doc_open("Drive Entity", this.entityName)
+    this.$realtime.doc_subscribe("Drive File", this.entityName)
+    this.$realtime.doc_open("Drive File", this.entityName)
     this.$realtime.on("document_version_change_recv", (data) => {
-      const { doctype, document, author, author_image, author_id } = data
+      const { author, author_image, author_id } = data
       if (author_id === this.$realtime.socket.id) {
         toast({
           title: "You changed the document version",
@@ -623,8 +620,8 @@ export default {
     this.emitter.off("forceHideBubbleMenu")
     this.emitter.off("importDocFromWord")
     this.$realtime.off("document_version_change_recv")
-    this.$realtime.doc_close("Drive Entity", this.entityName)
-    this.$realtime.doc_unsubscribe("Drive Entity", this.entityName)
+    this.$realtime.doc_close("Drive File", this.entityName)
+    this.$realtime.doc_unsubscribe("Drive File", this.entityName)
     this.updateConnectedUsers(this.editor)
     this.$store.state.passiveRename = false
     document.removeEventListener("keydown", this.saveDoc)
@@ -638,7 +635,7 @@ export default {
   methods: {
     updateAnnotationStatus() {
       const temp = new Set()
-      this.editor.state.doc.descendants((node, pos) => {
+      this.editor.state.doc.descendants((node) => {
         const { marks } = node
         marks.forEach((mark) => {
           if (mark.type.name === "annotation") {
@@ -952,7 +949,14 @@ export default {
   resources: {
     rename() {
       return {
-        url: "drive.api.files.passive_rename",
+        url: "drive.api.files.call_controller_method",
+        makeParams: (params) => ({
+          method: "rename",
+          ...params,
+        }),
+        onSuccess: () => {
+          this.$emit("rename")
+        },
         debounce: 500,
       }
     },

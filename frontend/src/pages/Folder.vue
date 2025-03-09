@@ -1,31 +1,26 @@
 <template>
-  <PageGeneric
+  <GenericPage
     v-if="currentFolder.fetched"
-    url="drive.api.list.files"
-    :allow-empty-context-menu="allowEmptyContextMenu"
-    :show-sort="true"
-    :is-shared-folder="isSharedFolder"
-    :entity-name="entityName"
+    :get-entities="getFolderContents"
     :icon="Folder"
-    :primaryMessage="'Folder is Empty'"
-    :secondaryMessage="''"
+    :primary-message="'Folder is Empty'"
   />
 </template>
 
 <script setup>
 import Folder from "../components/EspressoIcons/Folder.vue"
-import PageGeneric from "@/components/PageGeneric.vue"
-import { ref, inject, onMounted, onBeforeUnmount } from "vue"
+import GenericPage from "@/components/GenericPage.vue"
+import { inject, onMounted, onBeforeUnmount } from "vue"
 import { useStore } from "vuex"
 import { createResource } from "frappe-ui"
 import { useRouter } from "vue-router"
 import { formatDate } from "@/utils/format"
+import { getFolderContents } from "@/resources/files"
+import { setBreadCrumbs, prettyData } from "../utils/files"
 
 const store = useStore()
 const router = useRouter()
 const realtime = inject("realtime")
-const isSharedFolder = ref(false)
-const allowEmptyContextMenu = ref(false)
 
 const props = defineProps({
   entityName: {
@@ -34,10 +29,17 @@ const props = defineProps({
     default: "",
   },
 })
+getFolderContents.reset()
+getFolderContents.update({
+  params: {
+    entity_name: props.entityName,
+  },
+  cache: "folder-" + props.entityName,
+})
 
 onMounted(() => {
-  realtime.doc_subscribe("Drive Entity", props.entityName)
-  realtime.doc_open("Drive Entity", props.entityName)
+  realtime.doc_subscribe("Drive File", props.entityName)
+  realtime.doc_open("Drive File", props.entityName)
   realtime.on("doc_viewers", (data) => {
     store.state.connectedUsers = data.users
     userInfo.submit({ users: JSON.stringify(data.users) })
@@ -50,53 +52,23 @@ onMounted(() => {
 onBeforeUnmount(() => {
   realtime.off("doc_viewers")
   store.state.connectedUsers = []
-  realtime.doc_close("Drive Entity", currentFolder.data?.name)
-  realtime.doc_unsubscribe("Drive Entity", currentFolder.data?.name)
+  realtime.doc_close("Drive File", currentFolder.data?.name)
+  realtime.doc_unsubscribe("Drive File", currentFolder.data?.name)
   store.commit("setEntityInfo", [])
 })
 
 let currentFolder = createResource({
   url: "drive.api.permissions.get_entity_with_permissions",
   params: { entity_name: props.entityName },
-  transform(data) {
-    if (data.owner !== store.state.auth.user_id) {
-      isSharedFolder.value = true
-      store.commit("setHasWriteAccess", data.write)
-      allowEmptyContextMenu.value = !!data.write
-    } else {
-      isSharedFolder.value = false
-      store.commit("setHasWriteAccess", true)
-      allowEmptyContextMenu.value = true
-    }
+  transform(entity) {
+    store.commit("setCurrentFolder", [entity])
+    store.commit("setCurrentFolderID", props.entityName)
+    entity = prettyData([entity])
   },
   onSuccess(data) {
-    store.commit("setCurrentFolder", [data])
-    store.commit("setCurrentFolderID", props.entityName)
     data.modified = formatDate(data.modified)
     data.creation = formatDate(data.creation)
-    let currentBreadcrumbs = [
-      {
-        label: "Shared",
-        route: "/shared",
-      },
-    ]
-    const root_item = data.breadcrumbs[0]
-    if (root_item.name === store.state.homeFolderID) {
-      currentBreadcrumbs = [
-        {
-          label: "Home",
-          route: "/home",
-        },
-      ]
-      data.breadcrumbs.shift()
-    }
-    data.breadcrumbs.forEach((item, idx) => {
-      currentBreadcrumbs.push({
-        label: item.title,
-        route: "/folder/" + item.name,
-      })
-    })
-    store.commit("setCurrentBreadcrumbs", currentBreadcrumbs)
+    setBreadCrumbs(data.breadcrumbs, data.is_private, false)
   },
   onError(error) {
     if (error && error.exc_type === "PermissionError") {
