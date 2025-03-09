@@ -1,9 +1,7 @@
 import { format } from "date-fns"
-import { fromZonedTime } from "date-fns-tz"
-import store from "../store"
 
 export function formatSize(size, nDigits = 1) {
-  if (size === 0) return "0 B"
+  if (size === 0) return "-"
   const k = 1000 // Change base to 1000 for decimal prefixes
   const digits = nDigits < 0 ? 0 : nDigits
   const sizes = [" B", " KB", " MB", " GB", " TB", " PB"] // Adjusted for decimal prefixes
@@ -31,19 +29,16 @@ export function base2BlockSize(bytes, decimals = 2, current = 0) {
 }
 
 export function formatDate(date) {
-  const serverTimeZone = store.state.serverTZ
   const dateObj = new Date(date)
-
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const zonedDate = fromZonedTime(dateObj, serverTimeZone)
   const hourCycle = navigator.language || "en-US"
 
-  const formattedDate = format(zonedDate, "MM/dd/yy", { timeZone })
+  const formattedDate = format(dateObj, "MM/dd/yy", { timeZone })
   let formattedTime
   if (hourCycle === "en-US") {
-    formattedTime = format(zonedDate, "hh:mm a", { timeZone })
+    formattedTime = format(dateObj, "hh:mm a", { timeZone })
   } else {
-    formattedTime = format(zonedDate, "HH:mm", { timeZone })
+    formattedTime = format(dateObj, "HH:mm", { timeZone })
   }
   return `${formattedDate}, ${formattedTime}`
 }
@@ -55,6 +50,7 @@ export function formatMimeType(mimeType) {
   const specific = mimeType.split("/")[1]
   if (["image", "video", "audio"].includes(generic)) icon = generic
   else if (generic === "frappe_doc") icon = "Frappe Doc"
+  else if (generic === "frappe_whiteboard") icon = "Frappe Whiteboard"
   else
     switch (specific) {
       case "pdf":
@@ -98,4 +94,27 @@ export function getDateDiffInDays(date1, date2) {
     date2.getDate()
   )
   return Math.floor((date1UTC - date2UTC) / msPerDay)
+}
+
+export const formatPercent = (num) => {
+  return new Intl.NumberFormat("default", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(num / 100)
+}
+
+export const COLOR_MAP = {
+  Archive: "#C2A88D",
+  Application: "#f472b6",
+  Image: "#34BAE3",
+  Video: "#E86C13",
+  Audio: "#9C45E3",
+  Document: "#0073CA",
+  Spreadsheet: "#30A66D",
+  Presentation: "#F5BA14",
+  Text: "#E2E2E2",
+  PDF: "#E03636",
+  Book: "#E2E2E2",
+  Unknown: "#3f3f46",
 }

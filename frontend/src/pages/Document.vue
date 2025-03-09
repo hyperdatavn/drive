@@ -6,7 +6,7 @@
       v-model:rawContent="rawContent"
       v-model:lastSaved="lastSaved"
       v-model:settings="settings"
-      :user-list="allUsers"
+      :user-list="allUsers.data || []"
       :fixed-menu="true"
       :bubble-menu="true"
       :timeout="timeout"
@@ -34,11 +34,13 @@ import {
   defineAsyncComponent,
   onBeforeUnmount,
 } from "vue"
-import { useRouter } from "vue-router"
+import { useRouter, useRoute } from "vue-router"
 import { useStore } from "vuex"
 import { formatSize, formatDate } from "@/utils/format"
 import { createResource } from "frappe-ui"
 import { watchDebounced } from "@vueuse/core"
+import { setBreadCrumbs } from "@/utils/files"
+import { allUsers } from "@/resources/permissions"
 
 const TextEditor = defineAsyncComponent(() =>
   import("@/components/DocEditor/TextEditor.vue")
@@ -49,6 +51,7 @@ const ShareDialog = defineAsyncComponent(() =>
 
 const store = useStore()
 const router = useRouter()
+const route = useRoute()
 const emitter = inject("emitter")
 
 const props = defineProps({
@@ -68,7 +71,6 @@ const rawContent = ref(null)
 const contentLoaded = ref(false)
 const isWritable = ref(false)
 const entity = ref(null)
-const allUsers = ref([])
 const mentionedUsers = ref()
 const showShareDialog = ref(false)
 const timeout = ref(1000 + Math.floor(Math.random() * 5000))
@@ -108,7 +110,7 @@ const saveDocument = () => {
   }
 }
 
-const getDocument = createResource({
+createResource({
   url: "drive.api.permissions.get_entity_with_permissions",
   method: "GET",
   auto: true,
@@ -121,6 +123,7 @@ const getDocument = createResource({
     data.modified = formatDate(data.modified)
     data.creation = formatDate(data.creation)
     store.commit("setEntityInfo", [data])
+    store.commit("setActiveEntity", data)
     if (!data.settings) {
       data.settings =
         '{ "docWidth": false, "docSize": true, "docFont": "font-fd-sans", "docHeader": false, "docHighlightAnnotations": false, "docSpellcheck": false}'
@@ -141,36 +144,7 @@ const getDocument = createResource({
     entity.value = data
     lastSaved.value = Date.now()
     contentLoaded.value = true
-    let currentBreadcrumbs = [
-      {
-        label: "Shared",
-        route: "/shared",
-      },
-    ]
-    const root_item = data.breadcrumbs[0]
-    if (root_item.name === store.state.homeFolderID) {
-      currentBreadcrumbs = [
-        {
-          label: "Home",
-          route: "/home",
-        },
-      ]
-      data.breadcrumbs.shift()
-    }
-    data.breadcrumbs.forEach((item, idx) => {
-      if (idx === data.breadcrumbs.length - 1) {
-        currentBreadcrumbs.push({
-          label: item.title,
-          route: "/document/" + item.name,
-        })
-      } else {
-        currentBreadcrumbs.push({
-          label: item.title,
-          route: "/folder/" + item.name,
-        })
-      }
-    })
-    store.commit("setCurrentBreadcrumbs", currentBreadcrumbs)
+    setBreadCrumbs(data.breadcrumbs, data.is_private, false)
   },
   onError(error) {
     if (error && error.exc_type === "PermissionError") {
@@ -199,6 +173,7 @@ const updateDocument = createResource({
 })
 
 onMounted(() => {
+  allUsers.fetch({ team: route.params?.team })
   emitter.on("showShareDialog", () => {
     showShareDialog.value = true
   })
@@ -216,35 +191,5 @@ onBeforeUnmount(() => {
   if (intervalId.value !== null) {
     clearInterval(intervalId.value)
   }
-})
-
-let fetchAllUsers = createResource({
-  url: "drive.utils.users.get_users_with_drive_user_role_and_groups",
-  method: "GET",
-  auto: true,
-  onSuccess(data) {
-    data.forEach(function (item) {
-      if (item.name) {
-        item.value = item.name
-        item.label = item.name
-        item.type = "User Group"
-        delete item.name
-        return
-      }
-      item.value = item.email
-      item.label = item.full_name.trimEnd()
-      item.type = "User"
-      delete item.email
-      delete item.full_name
-    })
-    allUsers.value = data
-  },
-  onError(error) {
-    if (error.messages) {
-      this.errorMessage = error.messages.join("\n")
-    } else {
-      this.errorMessage = error.message
-    }
-  },
 })
 </script>

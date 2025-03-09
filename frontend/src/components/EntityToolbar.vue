@@ -69,10 +69,7 @@
 import { useStore } from "vuex"
 import { Checkbox, Button } from "frappe-ui"
 import { computed } from "vue"
-import {
-  folderDownload,
-  selectedEntitiesDownload,
-} from "@/utils/folderDownload"
+import { folderDownload, selectedEntitiesDownload } from "@/utils/download"
 
 defineOptions({
   inheritAttrs: false,
@@ -99,7 +96,11 @@ function IsDownloadEnabled() {
     return false
   }
   const allEntitiesSatisfyCondition = selectedEntities.value.every((entity) => {
-    return entity.allow_download || entity.write || entity.owner === "You"
+    return (
+      entity.allow_download ||
+      entity.write ||
+      entity.owner === store.state.auth.user_id
+    )
   })
   return allEntitiesSatisfyCondition
 }

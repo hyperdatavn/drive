@@ -23,9 +23,16 @@
         v-else
         class="h-6 px-2 hover:bg-gray-100 text-sm whitespace-nowrap cursor-pointer rounded flex justify-start items-center"
       >
+        <FeatherIcon
+          v-if="item.icon && typeof item.icon === 'string'"
+          :name="item.icon"
+          class="mr-2 h-4 w-4 flex-shrink-0 text-ink-gray-6"
+          aria-hidden="true"
+        />
         <component
+          v-else
+          class="mr-2 h-4 w-4 flex-shrink-0 text-ink-gray-6"
           :is="item.icon"
-          class="h-4 w-auto mr-2 stroke-[1.75] text-gray-800"
         />
         <div class="text-gray-800 mr-4">{{ item.label }}</div>
       </div>
@@ -34,6 +41,7 @@
 </template>
 <script>
 import disableScroll from "../utils/disable-scroll"
+import { FeatherIcon } from "frappe-ui"
 
 export default {
   name: "EmptyEntityContext",
@@ -42,7 +50,7 @@ export default {
       type: Array,
       default: null,
     },
-    entityContext: {
+    event: {
       type: Object,
       default: null,
     },
@@ -53,6 +61,7 @@ export default {
   },
   data() {
     return {
+      FeatherIcon,
       parentWidth: null,
       parentHeight: null,
       childWidth: null,
@@ -83,21 +92,19 @@ export default {
       document.querySelector("#currentPage").classList.remove("disable-scroll")
     },
     calculateY() {
-      if (this.entityContext.y >= this.parentHeight - this.childHeight) {
+      if (this.event.y >= this.parentHeight - this.childHeight) {
         return (this.$refs.emptyContextMenu.style.top =
-          this.entityContext.y - this.childHeight + "px")
+          this.event.y - this.childHeight + "px")
       } else {
-        return (this.$refs.emptyContextMenu.style.top =
-          this.entityContext.y + "px")
+        return (this.$refs.emptyContextMenu.style.top = this.event.y + "px")
       }
     },
     calculateX() {
-      if (this.entityContext.x >= this.parentWidth - this.childWidth) {
+      if (this.event.x >= this.parentWidth - this.childWidth) {
         return (this.$refs.emptyContextMenu.style.left =
-          this.entityContext.x - this.childWidth + "px")
+          this.event.x - this.childWidth + "px")
       } else {
-        return (this.$refs.emptyContextMenu.style.left =
-          this.entityContext.x + "px")
+        return (this.$refs.emptyContextMenu.style.left = this.event.x + "px")
       }
     },
   },

@@ -7,16 +7,7 @@
         : 'w-0 min-w-0 max-w-0 overflow-hidden opacity-0'
     "
   >
-    <div v-if="typeof entity === 'number'">
-      <div class="w-full px-5 py-4 border-b overflow-visible">
-        <div class="flex items-center">
-          <div class="font-medium truncate text-lg">
-            {{ store.state.entityInfo.length }} items selected
-          </div>
-        </div>
-      </div>
-    </div>
-    <div v-else-if="entity">
+    <div v-if="entity">
       <div class="w-full px-5 py-4 border-b">
         <div class="flex items-center">
           <div class="font-medium truncate text-lg">
@@ -52,45 +43,46 @@
         <div class="space-y-6.5">
           <div v-if="entity.owner === 'You'">
             <div class="text-base font-medium mb-4">Access</div>
-            <div class="flex items-center justify-start">
-              <Avatar
-                size="md"
-                :label="entity.owner"
-                :image="entity.user_image"
-              />
-              <div class="border-l h-6 mx-1.5"></div>
-              <GeneralAccess
-                v-if="
-                  !generalAccess.loading &&
-                  (!!generalAccess.data?.length || !sharedWithList?.length)
-                "
-                size="md"
-                class="-mr-[3px] outline outline-white"
-                :general-access="generalAccess?.data?.[0]"
-              />
-              <div
-                v-if="sharedWithList?.length && !sharedWithList.loading"
-                class="flex items-center justify-start"
-              >
-                <Avatar
-                  v-for="user in sharedWithList.slice(0, 3)"
-                  :key="user?.user_name"
+            <div class="flex items-center justify-between">
+              <div class="flex">
+                <GeneralAccess
                   size="md"
-                  :label="user?.full_name ? user?.full_name : user?.user_name"
-                  :image="user?.user_image"
                   class="-mr-[3px] outline outline-white"
+                  :access-type="
+                    generalAccess?.data?.read === 1 ? 'public' : 'restricted'
+                  "
                 />
-
-                <Avatar
-                  v-if="sharedWithList.slice(3).length"
-                  size="md"
-                  :label="sharedWithList.slice(3).length.toString()"
-                  class="-mr-[3px] outline outline-white"
-                />
+                <div
+                  v-if="userList.data?.length"
+                  class="flex items-center justify-start ms-3"
+                >
+                  <Avatar
+                    v-for="user in userList.data.slice(0, 3)"
+                    :key="user?.user_name"
+                    size="sm"
+                    :label="user.full_name || user.user"
+                    :image="user?.user_image"
+                    class="-mr-[3px] outline outline-white"
+                  />
+                  <span
+                    class="text-base text-gray-700 ms-1"
+                    v-if="userList.data.slice(3).length"
+                  >
+                    +{{ userList.data.slice(3).length }}
+                  </span>
+                </div>
               </div>
+              <Button
+                v-if="$store.state.activeEntity?.share"
+                :variant="'subtle'"
+                class="rounded flex justify-center items-center"
+                @click="emitter.emit('showShareDialog')"
+              >
+                Manage
+              </Button>
             </div>
           </div>
-          <div>
+          <div v-if="userId !== 'Guest'">
             <div class="text-base font-medium mb-4">Tags</div>
             <TagInput class="min-w-full" :entity="entity" />
           </div>
@@ -103,21 +95,26 @@
                 Size
               </span>
               <span v-if="entity.file_size" class="col-span-1">
-                {{ entity.file_size }}
+                {{ entity.file_size_pretty }}
+                {{ `(${entity.file_size})` }}
               </span>
               <span class="col-span-1 text-gray-600">Modified</span>
               <span class="col-span-1">{{ entity.modified }}</span>
-              <span class="col-span-1 text-gray-600">Created</span>
+              <span class="col-span-1 text-gray-600">Uploaded</span>
               <span class="col-span-1">{{ entity.creation }}</span>
               <span class="col-span-1 text-gray-600">Owner</span>
-              <span class="col-span-1">{{ entity.full_name }}</span>
+              <span class="col-span-1">{{
+                entity.owner + entity.owner === $store.state.auth.user_id
+                  ? " (you)"
+                  : ""
+              }}</span>
             </div>
           </div>
         </div>
       </div>
       <!-- Comments -->
       <div
-        v-if="tab === 1"
+        v-if="entity.comment && tab === 1"
         class="max-h-[90vh] pt-4 pb-5 border-b overflow-y-auto overflow-x-hidden"
       >
         <span
@@ -126,7 +123,8 @@
           <!--  <Comment /> -->
           Comments
         </span>
-        <div v-if="entity.allow_comments" class="pb-2 px-5">
+        <!-- Check commenting permissions -->
+        <div class="pb-2 px-5">
           <div
             v-for="comment in comments.data"
             :key="comment"
@@ -152,10 +150,7 @@
               </div>
             </div>
           </div>
-          <div
-            v-if="userId != 'Guest'"
-            class="flex items-center justify-start py-2"
-          >
+          <div class="flex items-center justify-start py-2">
             <Avatar :label="fullName" :image="imageURL" class="mr-3" />
             <div
               class="flex items-center border w-full bg-transparent rounded mr-1 focus-within:ring-2 ring-gray-400 hover:bg-gray-100 focus-within:bg-gray-100 group"
@@ -177,22 +172,17 @@
             </div>
           </div>
         </div>
-        <div v-else class="text-gray-600 text-sm px-5">
-          Comments have been disabled for this
-          {{ entity.is_group ? "folder" : "file" }} by its owner.
-        </div>
       </div>
       <div
-        v-if="tab === 2"
+        v-if="entity.write && tab === 2"
         class="max-h-[90vh] pt-4 pb-5 border-b overflow-y-auto overflow-x-hidden"
       >
         <span
           class="inline-flex items-center gap-2.5 px-5 mb-5 text-gray-800 font-medium text-lg w-full"
         >
-          <!-- <Clock /> -->
           Activity
         </span>
-        <ActivityTree v-if="showActivity" />
+        <ActivityTree v-if="entity.write" />
       </div>
     </div>
     <div
@@ -205,6 +195,7 @@
   </div>
 
   <div
+    v-if="showInfoSidebar"
     class="hidden sm:flex flex-col items-center overflow-hidden h-full min-w-[48px] gap-1 pt-3 px-0 border-l z-0 bg-white"
   >
     <Button
@@ -220,7 +211,7 @@
       <Info />
     </Button>
     <Button
-      v-if="showComments"
+      v-if="entity?.comment"
       class="text-gray-600"
       :class="[
         tab === 1 && showInfoSidebar
@@ -233,7 +224,7 @@
       <Comment />
     </Button>
     <Button
-      v-if="showActivity"
+      v-if="entity?.write"
       class="text-gray-600"
       :class="[
         tab === 2 && showInfoSidebar
@@ -260,71 +251,28 @@ import File from "./EspressoIcons/File.vue"
 import Comment from "./EspressoIcons/Comment.vue"
 import Clock from "./EspressoIcons/Clock.vue"
 import ActivityTree from "./ActivityTree.vue"
-import Tag from "@/components/Tag.vue"
 import TagInput from "@/components/TagInput.vue"
+import { generalAccess, userList } from "@/resources/permissions"
+
 const store = useStore()
 const tab = ref(0)
-const addTag = ref(false)
 const newComment = ref("")
 const thumbnailLink = ref("")
 
-const userId = computed(() => {
-  return store.state.auth.user_id
-})
+const userId = computed(() => store.state.auth.user_id)
+const fullName = computed(() => store.state.user.fullName)
+const imageURL = computed(() => store.state.user.imageURL)
 
-const fullName = computed(() => {
-  return store.state.user.fullName
-})
-
-const imageURL = computed(() => {
-  return store.state.user.imageURL
-})
-
-const showInfoSidebar = computed(() => {
-  return store.state.showInfo
-})
+const showInfoSidebar = computed(() => store.state.showInfo)
 
 const formattedMimeType = computed(() => {
   if (entity.value.is_group) return "Folder"
-  const file = entity.value.file_kind
-  return file?.charAt(0).toUpperCase() + file?.slice(1)
+  const kind = formatMimeType(entity.value.mime_type)
+  return kind.charAt(0).toUpperCase() + kind.slice(1)
 })
 
 const entity = computed(() => {
-  if (store.state.entityInfo && store.state.entityInfo.length > 1) {
-    return store.state.entityInfo.length
-  } else if (store.state.entityInfo?.length) {
-    return store.state.entityInfo[0]
-  } else if (store.state.currentFolder?.length) {
-    return store.state.currentFolder[0]
-  } else {
-    return false
-  }
-})
-
-const sharedWithList = computed(() => {
-  return userList.data?.users.concat(groupList.data)
-})
-
-const showComments = computed(() => {
-  if (entity.value.owner === "You") {
-    return true
-  } else if (entity.value.write) {
-    return true
-  } else if (entity.value.allow_comments) {
-    return true
-  } else {
-    return false
-  }
-})
-
-const showActivity = computed(() => {
-  if (entity.value.owner === "You") {
-    return true
-  } else if (entity.value.write) {
-    return true
-  }
-  return false
+  return store.state.activeEntity
 })
 
 function switchTab(val) {
@@ -353,12 +301,16 @@ watch([entity, showInfoSidebar], ([newEntity, newShowInfoSidebar]) => {
     typeof newEntity !== "number" &&
     typeof newEntity !== "undefined"
   ) {
+    if (
+      (!newEntity.write && tab.value === 2) ||
+      (!newEntity.comment && tab.value === 1)
+    )
+      tab.value = 0
     if (newShowInfoSidebar == true) {
       thumbnailUrl()
       comments.fetch({ entity_name: newEntity.name })
-      generalAccess.fetch({ entity_name: newEntity.name })
+      generalAccess.fetch({ entity: newEntity.name })
       userList.fetch({ entity_name: newEntity.name })
-      groupList.fetch({ entity_name: newEntity.name })
     }
   }
 })
@@ -366,8 +318,8 @@ watch([entity, showInfoSidebar], ([newEntity, newShowInfoSidebar]) => {
 async function postComment() {
   if (newComment.value.length) {
     try {
-      await call("frappe.desk.form.utils.add_comment", {
-        reference_doctype: "Drive Entity",
+      await call("drive.utils.users.add_comment", {
+        reference_doctype: "Drive File",
         reference_name: entity.value.name,
         content: newComment.value,
         comment_email: userId.value,
@@ -393,21 +345,6 @@ let comments = createResource({
       console.log(error.messages)
     }
   },
-  auto: false,
-})
-
-const generalAccess = createResource({
-  url: "drive.api.permissions.get_general_access",
-  auto: false,
-})
-
-const userList = createResource({
-  url: "drive.api.permissions.get_shared_with_list",
-  auto: false,
-})
-
-const groupList = createResource({
-  url: "drive.api.permissions.get_shared_user_group_list",
   auto: false,
 })
 

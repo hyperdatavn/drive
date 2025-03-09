@@ -3,11 +3,13 @@
     <template #body-main>
       <div class="pb-6 pt-5 max-h-[85vh]">
         <div
-          class="flex items-start w-full justify-between gap-x-15 mb-8 px-4 sm:px-6"
+          class="flex items-start w-full justify-between gap-x-15 mb-3 px-4 sm:px-6"
         >
           <span class="font-semibold text-2xl truncate"
-            >Sharing "{{ entity?.title }}"</span
-          >
+            ><template v-if="!getUsersWithAccess.data?.length"
+              >Sharing </template
+            ><template v-else>Permissions - </template>"{{ entity?.title }}"
+          </span>
           <Button
             class="ml-auto"
             variant="ghost"
@@ -16,20 +18,15 @@
             <FeatherIcon name="x" class="stroke-2 h-4" />
           </Button>
         </div>
-        <div
-          v-if="showSettings"
-          class="px-4 sm:px-6"
-          :style="{
-            minHeight: $refs.shareMain?.clientHeight + 'px',
-          }"
-        >
+
+        <!-- Settings -->
+        <div v-if="showSettings" class="px-4 sm:px-6">
           <div class="flex flex-col space-y-4">
             <div>
               <span class="mb-0.5 block text-sm leading-4 text-gray-700"
                 >Preferences</span
               >
-              <Switch v-model="allowComments" label="Allow Comments" />
-              <Switch v-model="allowDownload" label="Allow Downloading" />
+              <!-- <Switch v-model="allowComments" label="Allow Comments" /> -->
             </div>
             <div>
               <DatePicker
@@ -38,13 +35,7 @@
                 label="Access Until"
               ></DatePicker>
               <span
-                v-if="invalidateAfterError"
-                class="block text-xs leading-4 text-red-500 px-0.5 py-1.5"
-              >
-                {{ invalidateAfterError }}
-              </span>
-              <span
-                v-else-if="invalidAfter"
+                v-if="invalidAfter"
                 class="block text-xs leading-4 text-gray-700 px-0.5 py-1.5"
               >
                 Selected documents will remain shared until
@@ -59,629 +50,280 @@
             </div>
           </div>
         </div>
-        <div
-          v-else-if="
-            !$resources.sharedWith.loading &&
-            !$resources.sharedWithUserGroup.loading
-          "
-          ref="shareMain"
-        >
+
+        <div v-else-if="!getUsersWithAccess.loading">
+          <!-- General Access -->
+          <div class="overflow-y-auto max-h-96 px-4 sm:px-6">
+            <div class="mb-3 font-medium text-base">Share:</div>
+            <div class="flex mt-3">
+              <TextInput
+                type="email"
+                class="grow"
+                size="sm"
+                variant="subtle"
+                v-model="share.name"
+                placeholder="share with..."
+              />
+              <div class="ms-3 w-20">
+                <Autocomplete
+                  :options="
+                    filteredAccess.map((k) => ({
+                      value: k,
+                      label: k[0].toUpperCase() + k.slice(1),
+                    }))
+                  "
+                  v-model="share.access"
+                  placeholder="Select people"
+                  :multiple="true"
+                  :hideSearch="true"
+                ></Autocomplete>
+              </div>
+              <Button
+                :disabled="
+                  share.name.length === 0 ||
+                  getUsersWithAccess.data
+                    .map((k) => k.user)
+                    .includes(share.name)
+                "
+                class="ms-3"
+                @click="addShare"
+              >
+                Share
+              </Button>
+            </div>
+            <div
+              v-if="!getUsersWithAccess.loading"
+              class="text-base space-y-4 mb-5 mt-3"
+            >
+              <div class="mt-5 text-gray-600 font-medium text-base">
+                People with access:
+              </div>
+              <div v-if="!getUsersWithAccess.data?.length" class="ms-2">
+                <em>Yet to be shared.</em>
+              </div>
+              <div
+                v-for="(user, idx) in getUsersWithAccess.data"
+                :key="user.name"
+                class="flex items-center gap-x-3"
+              >
+                <Avatar size="lg" :label="user.user" :image="user.user_image" />
+
+                <div class="flex items-start flex-col justify-start">
+                  <span class="text-gray-900">{{
+                    user.full_name || user.user_name || user.user
+                  }}</span>
+                  <span class="text-gray-700 text-sm">{{
+                    user.full_name ? user.user_name || user.email : ""
+                  }}</span>
+                </div>
+                <span
+                  v-if="user.user == $store.state.auth.user_id"
+                  class="ml-auto flex items-center gap-1 text-gray-600"
+                >
+                  <em>You</em>
+                </span>
+                <AccessButton
+                  v-else-if="user.user !== entity.owner"
+                  class="text-gray-700 relative flex-shrink-0 ml-auto"
+                  :access-obj="user"
+                  :access-levels="filteredAccess"
+                  @update-access="
+                    (access) =>
+                      updateAccess.submit({
+                        entity_name: entity.name,
+                        user: user.user,
+                        ...access,
+                      })
+                  "
+                  @remove-access="
+                    getUsersWithAccess.data.splice(idx, 1),
+                      updateAccess.submit({
+                        method: 'unshare',
+                        entity_name: entity.name,
+                        user: user.user,
+                      })
+                  "
+                />
+                <span
+                  v-else
+                  class="ml-auto flex items-center gap-1 text-gray-600"
+                >
+                  Owner
+                  <Diamond class="h-3.5" />
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="px-6 mb-3 mt-5 text-gray-600 font-medium text-base">
+            General access:
+          </div>
           <div
-            class="grid grid-flow-col-dense grid-cols-10 items-start justify-start mb-8 px-4 sm:px-6"
+            class="grid grid-flow-col-dense grid-cols-10 items-start justify-start mb-5 px-4 sm:px-6"
           >
             <GeneralAccess
               size="lg"
               class="col-span-1 justify-self-start row-start-1 row-end-1"
-              :general-access="generalAccess"
+              :access-type="generalAccess.access.value"
             />
-            <Popover
-              v-slot="{ open, close }"
-              class="text-gray-700 relative flex-shrink-0 justify-self-start col-span-6 mb-1"
-            >
-              <PopoverButton
-                class="flex gap-1 px-2 focus:outline-none bg-gray-100 rounded h-7 items-center text-base w-auto justify-between"
-              >
-                {{
-                  generalAccess.public
-                    ? "Public"
-                    : generalAccess.everyone
-                    ? "Organization"
-                    : "Restricted"
-                }}
-                <FeatherIcon
-                  :class="{ '[transform:rotateX(180deg)]': open }"
-                  name="chevron-down"
-                  class="w-4"
-                />
-              </PopoverButton>
-              <PopoverPanel
-                class="z-10 bg-white p-1 shadow-2xl rounded mt-1 absolute min-w-28 w-full"
-                ><ul>
-                  <li
-                    class="flex items-center justify-between px-1 text-base line-clamp-1 py-1 gap-1 hover:bg-gray-100 w-full rounded-[6px] cursor-pointer"
-                    @click="
-                      ;(generalAccess.public = 0),
-                        (generalAccess.everyone = 1),
-                        close(),
-                        updateGeneralAccess()
-                    "
-                  >
-                    Organization
-                    <Check v-if="generalAccess.everyone" class="h-3" />
-                  </li>
-                  <li
-                    class="flex items-center justify-between px-1 text-base line-clamp-1 py-1 gap-1 hover:bg-gray-100 w-full rounded-[6px] cursor-pointer"
-                    @click="
-                      ;(generalAccess.public = 1),
-                        (generalAccess.everyone = 0),
-                        close(),
-                        updateGeneralAccess()
-                    "
-                  >
-                    Public
-                    <Check v-if="generalAccess.public" class="h-3" />
-                  </li>
-                  <li
-                    class="flex items-center justify-between px-1 text-base line-clamp-1 py-1 gap-1 hover:bg-gray-100 w-full rounded-[6px] cursor-pointer"
-                    @click="
-                      ;(generalAccess.public = 0),
-                        (generalAccess.read = 0),
-                        (generalAccess.write = 0),
-                        (generalAccess.everyone = 0),
-                        close(),
-                        updateGeneralAccess()
-                    "
-                  >
-                    Restricted
-                    <Check
-                      v-if="!generalAccess.public && !generalAccess.everyone"
-                      class="h-3"
-                    />
-                  </li></ul
-              ></PopoverPanel>
-            </Popover>
-            <Popover
-              v-if="generalAccess.public || generalAccess.everyone"
-              v-slot="{ open, close }"
-              class="text-gray-700 relative flex-shrink-0 col-span-3 justify-self-end row-start-1 row-end-1"
-            >
-              <PopoverButton
-                class="flex gap-1 px-2 focus:outline-none bg-gray-100 rounded h-7 items-center text-base justify-self-end"
-              >
-                {{ generalAccess.write ? "Can Edit" : "Can View" }}
-                <FeatherIcon
-                  :class="{ '[transform:rotateX(180deg)]': open }"
-                  name="chevron-down"
-                  class="w-4"
-                />
-              </PopoverButton>
-              <PopoverPanel
-                class="z-10 bg-white p-1 shadow-2xl rounded mt-1 absolute w-full"
-                ><ul>
-                  <li
-                    class="flex items-center justify-between px-1 text-base line-clamp-1 py-1 gap-1 hover:bg-gray-100 w-full rounded-[6px] cursor-pointer"
-                    @click="
-                      generalAccess.read === 1,
-                        (generalAccess.write = 0),
-                        close(),
-                        updateGeneralAccess()
-                    "
-                  >
-                    Can View
-                    <Check
-                      v-if="
-                        generalAccess.read === 1 && generalAccess.write === 0
-                      "
-                      class="h-3"
-                    />
-                  </li>
-                  <li
-                    class="flex items-center justify-between px-1 text-base line-clamp-1 py-1 gap-1 hover:bg-gray-100 w-full rounded-[6px] cursor-pointer"
-                    @click="
-                      generalAccess.read === 1,
-                        (generalAccess.write = 1),
-                        close(),
-                        updateGeneralAccess()
-                    "
-                  >
-                    Can Edit
-                    <Check
-                      v-if="
-                        generalAccess.read === 1 && generalAccess.write === 1
-                      "
-                      class="h-3"
-                    />
-                  </li></ul
-              ></PopoverPanel>
-            </Popover>
+            <div class="col-span-10 mb-2 flex justify-between">
+              <Autocomplete
+                v-model="generalAccess.access"
+                :options="[
+                  { label: 'Restricted', value: 'restricted' },
+                  { label: 'Public', value: 'public' },
+                ]"
+                :hideSearch="true"
+                @update:model-value="
+                  (v) =>
+                    v.value === 'public'
+                      ? updateAccess.submit({
+                          entity_name: entity.name,
+                          user: '',
+                          ...generalAccess.type.reduce((acc, { value }) => {
+                            acc[value] = 1
+                            return acc
+                          }, {}),
+                        })
+                      : updateAccess.submit({
+                          entity_name: entity.name,
+                          user: '',
+                          method: 'unshare',
+                        })
+                "
+              />
+              <Autocomplete
+                v-if="generalAccess.access.value === 'public'"
+                class="float-right"
+                :options="[
+                  { value: 'read', label: 'Read' },
+                  { value: 'comment', label: 'Comment' },
+                  { value: 'share', label: 'Share' },
+                  { value: 'write', label: 'Write' },
+                ]"
+                v-model="generalAccess.type"
+                :multiple="true"
+                :hideSearch="true"
+                @update:model-value="
+                  updateAccess.submit({
+                    entity_name: entity.name,
+                    user: '',
+                    ...generalAccess.type.reduce((acc, { value }) => {
+                      acc[value] = 1
+                      return acc
+                    }, {}),
+                  })
+                "
+              ></Autocomplete>
+            </div>
+
             <span
               class="pl-0.5 text-xs text-gray-700 row-start-2 row-end-2 col-span-6 col-start-2"
             >
               {{ accessMessage }}
             </span>
           </div>
-          <UserSearch
-            button-variant="solid"
-            class="mb-4 px-4 sm:px-6"
-            :owner="$resources.sharedWith.data.owner"
-            :active-users="$resources.sharedWith.data.users"
-            :active-groups="$resources.sharedWithUserGroup.data"
-            @add-new-users="addNewUsers"
-          />
-
-          <div class="overflow-y-auto max-h-96 px-4 sm:px-6">
-            <div
-              v-if="!$resources.sharedWith.loading"
-              class="text-base space-y-4 mb-5"
-            >
-              <span class="text-gray-600 font-medium text-base">Users</span>
-              <!-- Owner -->
-              <div class="flex items-center gap-x-3">
-                <Avatar
-                  size="lg"
-                  :label="$resources.sharedWith.data.owner.full_name"
-                  :image="$resources.sharedWith.data.owner.user_image"
-                />
-                <div class="flex items-start flex-col justify-start">
-                  <span class="text-gray-900">{{
-                    $resources.sharedWith.data.owner.full_name
-                  }}</span>
-                  <span class="text-gray-700 text-sm">{{
-                    $resources.sharedWith.data.owner.email
-                  }}</span>
-                </div>
-                <span class="ml-auto flex items-center gap-1 text-gray-600">
-                  Owner
-                  <Diamond class="h-3.5" />
-                </span>
-              </div>
-              <!-- Users -->
-              <div
-                v-for="(user, index) in $resources.sharedWith.data.users"
-                :key="user.name"
-                class="flex items-center gap-x-3"
-              >
-                <Avatar
-                  size="lg"
-                  :label="user.user_name"
-                  :image="user.user_image"
-                />
-                <div class="flex items-start flex-col justify-start">
-                  <span class="text-gray-900">{{
-                    user.full_name ? user.full_name : user.user_name
-                  }}</span>
-                  <span class="text-gray-700 text-sm">{{
-                    user.full_name ? user.user_name : ""
-                  }}</span>
-                </div>
-                <AccessButton
-                  class="text-gray-700 relative flex-shrink-0 ml-auto"
-                  :access-obj="user"
-                  @update-access="
-                    $resources.share.submit({
-                      entity_name: entityName,
-                      method: 'share',
-                      user: user.user_name,
-                      read: user.read,
-                      write: user.write,
-                      share: 0,
-                      user_type: 'User',
-                    })
-                  "
-                  @remove-access="
-                    $resources.sharedWith.data.users.splice(index, 1),
-                      $resources.share.submit({
-                        entity_name: entityName,
-                        method: 'unshare',
-                        user: user.user_name,
-                        user_type: 'User',
-                      })
-                  "
-                />
-              </div>
-            </div>
-            <!-- Groups -->
-            <div
-              v-if="$resources.sharedWithUserGroup.data?.length"
-              class="text-base space-y-4 mb-5"
-            >
-              <span
-                v-if="$resources.sharedWithUserGroup.data?.length"
-                class="text-gray-600 font-medium text-base"
-                >Groups</span
-              >
-              <div
-                v-for="(group, index) in $resources.sharedWithUserGroup.data"
-                :key="group.user_name"
-                class="flex items-center gap-x-3"
-              >
-                <Avatar size="lg" :label="group.user_name" />
-                <div class="flex items-start flex-col justify-start">
-                  <span class="text-gray-900">{{ group.user_name }}</span>
-                </div>
-                <AccessButton
-                  class="text-gray-700 relative flex-shrink-0 ml-auto"
-                  :access-obj="group"
-                  @update-access="
-                    $resources.share.submit({
-                      entity_name: entityName,
-                      method: 'share',
-                      user: group.user_name,
-                      read: group.read,
-                      write: group.write,
-                      share: 0,
-                      user_type: 'User Group',
-                    })
-                  "
-                  @remove-access="
-                    $resources.sharedWithUserGroup.data.splice(index, 1),
-                      $resources.share.submit({
-                        entity_name: entityName,
-                        method: 'unshare',
-                        user: group.user_name,
-                        user_type: 'User Group',
-                      })
-                  "
-                />
-              </div>
-            </div>
-          </div>
+        </div>
+        <div v-else class="flex min-h-[19.2vh] w-full">
+          <LoadingIndicator class="w-7 h-auto text-gray-700 mx-auto" />
         </div>
         <div
           class="w-full flex items-center justify-between mt-2 px-4 sm:px-6 gap-x-2"
         >
+          <!-- <Button
+            :variant="'outline'"
+            :icon-left="showSettings ? 'arrow-left' : 'settings'"
+            @click="showSettings = !showSettings"
+          >
+            {{ showSettings ? "Back" : "Settings" }}
+          </Button> -->
           <Button
             v-if="!showSettings"
+            class="ml-auto"
             :variant="'outline'"
             @click="getLink(entity)"
           >
             <template #prefix>
               <Link />
             </template>
-            Copy Link
-          </Button>
-          <Button
-            class="ml-auto"
-            :variant="'outline'"
-            :icon-left="showSettings ? 'arrow-left' : 'settings'"
-            @click="showSettings = !showSettings"
-          >
-            {{ showSettings ? "Back" : "Settings" }}
+            Get Link
           </Button>
         </div>
       </div>
     </template>
   </Dialog>
 </template>
-<script>
-import { ref } from "vue"
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/vue"
-import { Avatar, Dialog, FeatherIcon, Switch } from "frappe-ui"
+<script setup>
+import { ref, computed } from "vue"
+import {
+  Avatar,
+  Dialog,
+  FeatherIcon,
+  TextInput,
+  Autocomplete,
+  DatePicker,
+  LoadingIndicator,
+} from "frappe-ui"
 import AccessButton from "@/components/ShareDialog/AccessButton.vue"
 import { getLink } from "@/utils/getLink"
 import GeneralAccess from "@/components/GeneralAccess.vue"
-import UserSearch from "@/components/ShareDialog/UserSearch.vue"
 import Link from "@/components/EspressoIcons/Link.vue"
 import Diamond from "@/components/EspressoIcons/Diamond.vue"
-import Check from "@/components/EspressoIcons/Check.vue"
-import { capture } from "@/telemetry"
-import DatePicker from "frappe-ui/src/components/DatePicker.vue"
-import { formatDate } from "@/utils/format"
-import { useDateFormat } from "@vueuse/core"
+import { getUsersWithAccess, updateAccess } from "@/resources/permissions"
+import { useStore } from "vuex"
+const props = defineProps({ modelValue: String, entityName: String })
+const emit = defineEmits(["update:modelValue", "success"])
+const store = useStore()
+getUsersWithAccess.fetch({ entity_name: props.entityName })
 
-export default {
-  name: "ShareDialog",
-  components: {
-    Dialog,
-    UserSearch,
-    Avatar,
-    FeatherIcon,
-    Popover,
-    PopoverButton,
-    PopoverPanel,
-    Diamond,
-    Check,
-    GeneralAccess,
-    AccessButton,
-    Link,
-    Switch,
-    DatePicker,
+const entity = computed(() => store.state.activeEntity)
+const showSettings = ref(false)
+const invalidAfter = ref()
+const generalAccess = ref({
+  access: { value: "restricted", label: "Restricted" },
+  type: [{ value: "read", label: "Read" }],
+})
+const share = ref({
+  name: "",
+  access: [
+    { value: "read", label: "Read" },
+    { value: "comment", label: "Comment" },
+  ],
+})
+const openDialog = computed({
+  get: () => {
+    return props.modelValue === "s"
   },
-  props: {
-    modelValue: {
-      type: Boolean,
-      required: true,
-    },
-    entityName: {
-      type: String,
-      required: true,
-    },
+  set: (value) => {
+    emit("update:modelValue", value)
   },
-  emits: ["update:modelValue", "success"],
-  setup() {
-    const shareMain = ref(null)
-    return { shareMain }
-  },
-  data() {
-    return {
-      generalAccess: {
-        name: this.entityName,
-        read: true,
-        write: false,
-        share: false,
-        everyone: false,
-        public: false,
-      },
-      invalidAfter: null,
-      invalidateAfterError: null,
-      allowComments: true,
-      allowDownload: true,
-      saveLoading: false,
-      errorMessage: "",
-      showAlert: false,
-      alertMessage: "",
-      entity: null,
-      showSettings: false,
-      searchUserText: "",
-    }
-  },
-  computed: {
-    accessMessage() {
-      if (this.generalAccess.public) {
-        return this.generalAccess.write
-          ? "Anyone with a link to this file can edit"
-          : "Anyone with a link to this file can view"
-      }
-      if (this.generalAccess.everyone) {
-        return this.generalAccess.write
-          ? `Members of ${this.$resources.getOrgName.data?.org_name} can edit`
-          : `Members of ${this.$resources.getOrgName.data?.org_name} can view`
-      } else {
-        return "Only users with access can view or edit"
-      }
-    },
-    openDialog: {
-      get() {
-        return this.modelValue
-      },
-      set(value) {
-        this.$emit("update:modelValue", value)
-        if (!value) {
-          this.errorMessage = ""
-        }
-      },
-    },
-  },
-  watch: {
-    invalidAfter: {
-      handler(newVal) {
-        const date = new Date(newVal + " UTC")
-        const unix = Math.floor(date.getTime() / 1000)
-        const now = Math.floor(Date.now() / 1000)
-        if (unix < now) {
-          this.invalidAfter = null
-          this.invalidateAfterError = "Cannot select an earlier date"
-        } else {
-          this.invalidateAfterError = null
-          this.$resources.updateInvalidAfter.submit({
-            entity_name: this.entityName,
-            invalidation_date: newVal,
-          })
-        }
-      },
-    },
-    allowComments: {
-      handler() {
-        this.$resources.toggleAllowComments.submit()
-      },
-    },
-    allowDownload: {
-      handler() {
-        this.$resources.toggleAllowDownload.submit()
-      },
-    },
-  },
-  methods: {
-    formatDate,
-    useDateFormat,
-    updateGeneralAccess() {
-      this.$resources.updateAccess.submit({
-        method: "set_general_access",
-        entity_name: this.entityName,
-        read: this.generalAccess.read,
-        write: this.generalAccess.write,
-        share_name: this.generalAccess.name,
-        share: this.generalAccess.share,
-        public: this.generalAccess.public,
-        everyone: this.generalAccess.everyone,
-      })
-    },
-    addNewUsers(data) {
-      for (let i in data.users) {
-        this.$resources.share.submit({
-          entity_name: this.entityName,
-          method: "share",
-          user: data.users[i].user_name,
-          user_type: data.users[i].user_type,
-          read: data.access.read,
-          write: data.access.write,
-          share: 0,
-        })
-        if (data.users[i].user_type === "User") {
-          this.$resources.sharedWith.data.users.push({
-            user_name: data.users[i].user_name,
-            read: data.access.read,
-            write: data.access.write,
-            share: 0,
-            user_image: data.users[i].user_image,
-            full_name: data.users[i].full_name,
-          })
-        } else {
-          this.$resources.sharedWithUserGroup.data.push({
-            user_name: data.users[i].user_name,
-            read: data.access.read,
-            write: data.access.write,
-            share: 0,
-          })
-        }
-      }
-    },
-    getLink,
-  },
-  resources: {
-    sharedWith() {
-      return {
-        url: "drive.api.permissions.get_shared_with_list",
-        params: {
-          entity_name: this.entityName,
-        },
-        auto: true,
-      }
-    },
-    sharedWithUserGroup() {
-      return {
-        url: "drive.api.permissions.get_shared_user_group_list",
-        params: {
-          entity_name: this.entityName,
-        },
-        auto: true,
-      }
-    },
-    entity() {
-      return {
-        url: "drive.api.permissions.get_entity_with_permissions",
-        params: {
-          entity_name: this.entityName,
-          fields: "title,is_group,allow_comments,allow_download,owner",
-        },
-        onSuccess(data) {
-          this.entity = data
-          if (data.valid_until) {
-            this.invalidAfter = data.valid_until
-          }
-          this.allowComments = !!data.allow_comments
-          this.allowDownload = !!data.allow_download
-        },
-        auto: true,
-      }
-    },
-    generalAccess() {
-      return {
-        url: "drive.api.permissions.get_general_access",
-        params: { entity_name: this.entityName },
-        onSuccess(data) {
-          if (data[0]) {
-            this.generalAccess = data[0]
-          }
-        },
-        auto: true,
-      }
-    },
-    share() {
-      return {
-        url: "drive.api.files.call_controller_method",
-        params: {
-          method: "share",
-          entity_name: this.entityName,
-        },
-        onSuccess() {
-          this.$resources.share.error = null
-          capture("sharing_status_updated")
-        },
-        onError(error) {
-          if (error.messages) {
-            this.errorMessage = error.messages.join("\n")
-          } else {
-            this.errorMessage = error.message
-          }
-        },
-      }
-    },
-    toggleAllowComments() {
-      return {
-        url: "drive.api.files.call_controller_method",
-        params: {
-          entity_name: this.entityName,
-          method: "toggle_allow_comments",
-          new_value: !this.allowComments,
-        },
-        onSuccess() {
-          this.$emit("success")
-        },
-        onError(error) {
-          if (error.messages) {
-            console.log(error.messages)
-          }
-        },
-      }
-    },
-    updateInvalidAfter() {
-      return {
-        url: "drive.api.permissions.update_document_invalidation",
-        debounce: 500,
-        params: {
-          entity_name: this.entityName,
-          invalidation_date: this.invalidAfter,
-        },
-        onSuccess() {
-          this.$emit("success")
-        },
-        onError(error) {
-          if (error.messages) {
-            console.log(error.messages)
-          }
-        },
-      }
-    },
-    toggleAllowDownload() {
-      return {
-        url: "drive.api.files.call_controller_method",
-        params: {
-          entity_name: this.entityName,
-          method: "toggle_allow_download",
-          new_value: !this.allowDownload,
-        },
-        onSuccess() {
-          this.$emit("success")
-        },
-        onError(error) {
-          if (error.messages) {
-            console.log(error.messages)
-          }
-        },
-      }
-    },
-    updateAccess() {
-      return {
-        url: "drive.api.files.call_controller_method",
-        onSuccess() {
-          capture("sharing_status_updated")
-        },
-        onError(error) {
-          if (error.messages) {
-            console.log(error.messages)
-          }
-        },
-      }
-    },
-    getOrgName() {
-      return {
-        url: "frappe.client.get",
-        method: "GET",
-        cache: "org_info",
-        params: {
-          doctype: "Drive Instance Settings",
-        },
-        onError(error) {
-          if (error.messages) {
-            this.errorMessage = error.messages.join("\n")
-          } else {
-            this.errorMessage = error.message
-          }
-        },
-        auto: true,
-      }
-    },
-  },
+})
+
+const accessMessage = computed(() => {
+  if (generalAccess.value.access.value === "restricted")
+    return "Limited to people with access."
+  let modifiers = generalAccess.value.type.map((k) => k.value)
+  let modifier =
+    (modifiers.length === 1
+      ? modifiers[0]
+      : modifiers.slice(0, -1).join(", ") +
+        ` and ${modifiers[modifiers.length - 1]}`) + " this file."
+  return "Anyone on this planet can " + modifier
+})
+function addShare() {
+  let r = {
+    entity_name: entity.value.name,
+    user: share.value.name,
+    ...share.value.access.reduce((acc, { value }) => {
+      acc[value] = 1
+      return acc
+    }, {}),
+  }
+  updateAccess.submit(r)
+  getUsersWithAccess.data.push(r)
+  Object.assign(share, { name: "", access: [] }), getLink(entity)
 }
+const ACCESS_LEVELS = ["read", "comment", "share", "write"]
+const filteredAccess = computed(() =>
+  ACCESS_LEVELS.filter((l) => entity.value[l])
+)
 </script>

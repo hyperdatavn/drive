@@ -15,14 +15,12 @@ let getCookies = () => {
 const store = createStore({
   state: {
     auth: {
-      loading: false,
       user_id: getCookies().user_id,
     },
     user: {
       systemUser: getCookies().system_user === "yes",
       fullName: getCookies().full_name,
       imageURL: getCookies().user_image,
-      role: false,
     },
     error: {
       iconName: "x-circle",
@@ -33,32 +31,31 @@ const store = createStore({
     uploads: [],
     connectedUsers: [],
     sortOrder: JSON.parse(localStorage.getItem("sortOrder")) || {
-      label: "Name",
-      field: "title",
-      ascending: true,
+      label: "Modified",
+      field: "modified",
+      ascending: false,
     },
-    view: JSON.parse(localStorage.getItem("view")) || "grid",
+    view: JSON.parse(localStorage.getItem("view")) || "list",
     shareView: JSON.parse(localStorage.getItem("shareView")) || "with",
     elementExists: false,
-    activeFilters: [],
+    activeFilters: JSON.parse(localStorage.getItem("activeFilters")) || [],
     activeTags: [],
+    activeEntity: null,
     notifCount: 0,
     entityInfo:
       JSON.parse(localStorage.getItem("selectedEntities")) ||
       JSON.parse(localStorage.getItem("currentFolder")) ||
       [],
-    serverTZ: null,
     currentFolder: JSON.parse(localStorage.getItem("currentFolder")) || [],
-    currentViewEntites: get("currentViewEntites") || [],
+    currentEntitites: get("currentEntitites") || [],
     pasteData: { entities: [], action: null },
-    showInfo: JSON.parse(localStorage.getItem("showInfo")) || false,
+    showInfo: false,
     hasWriteAccess: false,
     // Default to empty string to upload to user Home folder
     currentFolderID: "",
-    homeFolderID: localStorage.getItem("homeFolderID"),
-    currentBreadcrumbs: JSON.parse(
-      localStorage.getItem("currentBreadcrumbs")
-    ) || [{ label: "Home", route: "/home" }],
+    breadcrumbs: JSON.parse(localStorage.getItem("breadcrumbs")) || [
+      { label: "Home", route: "/" },
+    ],
     allComments: "",
     activeCommentsInstance: "",
     IsSidebarExpanded: JSON.parse(
@@ -77,11 +74,7 @@ const store = createStore({
   },
   getters: {
     isLoggedIn: (state) => {
-      return (
-        state.auth.user_id &&
-        state.auth.user_id !== "Guest" &&
-        state.user.role !== "Guest"
-      )
+      return state.auth.user_id && state.auth.user_id !== "Guest"
     },
     uploadsInProgress: (state) => {
       return state.uploads.filter((upload) => !upload.completed)
@@ -109,14 +102,8 @@ const store = createStore({
       state.editorNewTab = !state.editorNewTab
       localStorage.setItem("editorNewTab", JSON.stringify(state.editorNewTab))
     },
-    setAuth(state, auth) {
-      Object.assign(state.auth, auth)
-    },
     setError(state, error) {
       Object.assign(state.error, error)
-    },
-    setUser(state, user) {
-      Object.assign(state.user, user)
     },
     setUploads(state, uploads) {
       state.uploads = uploads
@@ -149,13 +136,21 @@ const store = createStore({
       localStorage.setItem("selectedEntities", JSON.stringify(payload))
       state.entityInfo = payload
     },
+    setActiveEntity(state, payload) {
+      state.activeEntity = payload
+    },
+    setActiveFilters(state, payload) {
+      // BROKEN
+      // localStorage.setItem("activeFilters", JSON.stringify(payload))
+      state.activeFilters = payload
+    },
     setCurrentFolder(state, payload) {
       localStorage.setItem("currentFolder", JSON.stringify(payload))
       state.currentFolder = payload
     },
-    setCurrentViewEntites(state, payload) {
-      state.currentViewEntites = payload
-      set("currentViewEntites", JSON.stringify(payload))
+    setCurrentEntitites(state, payload) {
+      state.currentEntitites = payload
+      set("currentEntitites", JSON.stringify(payload))
     },
     setPasteData(state, payload) {
       state.pasteData = payload
@@ -181,9 +176,10 @@ const store = createStore({
       state.homeFolderID = payload
       localStorage.setItem("homeFolderID", payload)
     },
-    setCurrentBreadcrumbs(state, payload) {
-      localStorage.setItem("currentBreadcrumbs", JSON.stringify(payload))
-      state.currentBreadcrumbs = payload
+    setBreadcrumbs(state, payload) {
+      localStorage.setItem("breadcrumbs", JSON.stringify(payload))
+      window.title = payload[payload.length - 1].label
+      state.breadcrumbs = payload
     },
     setIsSidebarExpanded(state, payload) {
       localStorage.setItem("IsSidebarExpanded", JSON.stringify(payload))
@@ -195,30 +191,7 @@ const store = createStore({
       const exists = document.getElementById("headlessui-portal-root") !== null
       commit("setElementExists", exists)
     },
-    async login({ commit }, payload) {
-      localStorage.removeItem("is_drive_admin")
-      commit("setAuth", { loading: true })
-      clear()
-      let res = await call("login", {
-        usr: payload.email,
-        pwd: payload.password,
-      })
-      if (res) {
-        commit("setAuth", {
-          loading: false,
-          user_id: getCookies().user_id,
-        })
-        commit("setUser", {
-          fullName: getCookies().full_name,
-          imageURL: getCookies().user_image
-            ? window.location.origin + getCookies().user_image
-            : null,
-        })
-        return res
-      }
-    },
-    async logout({ commit }) {
-      commit("setAuth", { loading: true })
+    async logout() {
       await call("logout")
       clear()
       window.location.reload()

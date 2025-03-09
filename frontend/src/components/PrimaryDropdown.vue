@@ -10,7 +10,6 @@
             : isExpanded
             ? 'hover:bg-gray-200'
             : 'bg-transparent hover:bg-transparent shadow-none',
-          //open && isExpanded ? 'hover:bg-transparent' : 'bg-transparent hover:bg-transparent',
         ]"
         :style="{
           width: isExpanded ? '204px' : 'auto',
@@ -18,20 +17,36 @@
       >
         <FrappeDriveLogo class="w-8 h-8 rounded" />
         <div
-          class="flex flex-1 flex-col text-left duration-300 ease-in-out"
+          class="flex flex-1 flex-col text-left duration-300 text-nowrap ease-in-out"
           :class="
             isExpanded
               ? 'ml-2 w-auto opacity-100'
               : 'ml-0 w-0 opacity-0 overflow-hidden'
           "
         >
-          <div class="text-base font-medium leading-none text-gray-900">
-            Drive
+          <div
+            v-if="teamName"
+            class="text-base font-medium leading-none text-gray-900"
+          >
+            {{ teamName }}
           </div>
           <div
-            class="line-clamp-1 overflow-hidden mt-1 text-sm leading-none text-gray-700"
+            class="text-gray-700 text-base leading-none font-medium"
+            v-else-if="$route.name !== 'Shared'"
+          >
+            <em>Loading...</em>
+          </div>
+          <div
+            class="line-clamp-1 overflow-hidden text-sm leading-none text-gray-700"
+            :class="teamName ? 'mt-1' : 'mb-1'"
           >
             {{ fullName }}
+          </div>
+          <div
+            v-if="$route.name === 'Shared'"
+            class="font-medium text-base leading-none"
+          >
+            Shared
           </div>
         </div>
         <div
@@ -56,88 +71,90 @@
     :suggested-tab="suggestedTab"
   />
 </template>
-<script>
+
+<script setup>
 import { markRaw } from "vue"
 import { Dropdown, FeatherIcon } from "frappe-ui"
 import SettingsDialog from "@/components/Settings/SettingsDialog.vue"
 import FrappeDriveLogo from "@/components/FrappeDriveLogo.vue"
 import Docs from "@/components/EspressoIcons/Docs.vue"
 import AppSwitcher from "@/components/AppSwitcher.vue"
+import TeamSwitcher from "@/components/TeamSwitcher.vue"
+import { getTeams } from "@/resources/files"
+import emitter from "@/emitter"
+import { ref, computed } from "vue"
+import { useStore } from "vuex"
+import { useRouter, useRoute } from "vue-router"
 
-export default {
-  name: "PrimaryDropdown",
-  components: {
-    Dropdown,
-    FeatherIcon,
-    SettingsDialog,
-    FrappeDriveLogo,
-    AppSwitcher,
-  },
-  props: {
-    isExpanded: Boolean,
-  },
-  data: () => ({
-    showSettings: false,
-    suggestedTab: 0,
-  }),
-  computed: {
-    firstName() {
-      return this.$store.state.user.fullName.split(" ")
-    },
-    fullName() {
-      return this.$store.state.user.fullName
-    },
-    userEmail() {
-      return this.$store.state.auth.user_id
-    },
-    settingsItems() {
-      return [
+const route = useRoute()
+const router = useRouter()
+const store = useStore()
+
+defineProps({
+  isExpanded: Boolean,
+})
+const showSettings = ref(false)
+const suggestedTab = ref(0)
+
+// Remove somehow
+getTeams.fetch()
+const teamName = computed(() => {
+  if (!getTeams.data || !route.params.team) return
+  const teams = getTeams.data.message || getTeams.data
+  return teams[route.params.team]?.title
+})
+const fullName = computed(() => store.state.user.fullName)
+
+const settingsItems = computed(() => {
+  return [
+    {
+      group: "Manage",
+      hideLabel: true,
+      items: [
         {
-          group: "Manage",
-          hideLabel: true,
-          items: [
-            {
-              component: markRaw(AppSwitcher),
-            },
-            {
-              icon: Docs,
-              label: "Back To Course",
-              onClick() {
-                window.location.href = "/lms/course"
-              },
-            }
-          ],
+          component: markRaw(TeamSwitcher),
         },
         {
-          group: "Others",
-          hideLabel: true,
-          items: [
-            {
-              icon: "settings",
-              label: "Settings",
-              onClick: () => (this.showSettings = true),
-            },
-            {
-              icon: "log-out",
-              label: "Log out",
-              onClick: () => this.logout(),
-            },
-          ],
+          component: markRaw(AppSwitcher),
         },
-      ]
+        {
+          icon: Docs,
+          label: "Documentation",
+          onClick: () => window.open("https://docs.frappe.io/drive", "_blank"),
+        },
+        {
+          icon: "life-buoy",
+          label: "Support",
+          onClick: () => window.open("https://t.me/frappedrive", "_blank"),
+        },
+      ],
     },
-  },
-  mounted() {
-    this.emitter.on("showSettings", (val) => {
-      this.showSettings = true
-      this.suggestedTab = val
-    })
-  },
-  methods: {
-    logout() {
-      this.$store.dispatch("logout")
-      this.$router.redirect("/")
+    {
+      group: "Others",
+      hideLabel: true,
+      items: [
+        {
+          icon: "settings",
+          label: "Settings",
+          onClick: () => (showSettings.value = true),
+        },
+        {
+          icon: "log-out",
+          label: "Log out",
+          onClick: logout,
+        },
+      ],
     },
-  },
+  ]
+})
+
+emitter.on("showSettings", (val) => {
+  showSettings.value = true
+  suggestedTab.value = val
+})
+
+function logout() {
+  store.dispatch("logout")
+  router.redirect("/")
 }
 </script>

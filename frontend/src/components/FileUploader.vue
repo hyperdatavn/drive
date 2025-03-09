@@ -6,10 +6,10 @@ import { ref, onMounted, onBeforeUnmount, inject, watch } from "vue"
 import { useStore } from "vuex"
 import { useRoute } from "vue-router"
 import Dropzone from "dropzone"
-import { capture } from "@/telemetry"
 
 const store = useStore()
 const route = useRoute()
+const emit = defineEmits(["success"])
 
 const dropzone = ref()
 const computedFullPath = ref("")
@@ -100,10 +100,11 @@ onMounted(() => {
     autoProcessQueue: false,
     clickable: "#fileSelection",
     disablePreviews: true,
+    addRemoveLinks: true,
     createImageThumbnails: false,
     retryChunksLimit: 5,
-    previewsContainer: "#dropTarget",
     hiddenInputContainer: "#fileSelection",
+    // Do we want to allow multi uploads?
     uploadMultiple: false,
     chunking: true,
     retryChunks: true,
@@ -124,20 +125,16 @@ onMounted(() => {
         done()
       }
     },
-    sending: function (file, xhr, formData) {
-      if (file.lastModified) {
-        formData.append("last_modified", file.lastModified)
-      }
-      if (file.parent) {
-        formData.append("parent", file.parent)
-      }
-      if (file.newFullPath) {
-        formData.append("fullpath", file.newFullPath)
-      } else if (file.webkitRelativePath) {
-        formData.append("fullpath", file.webkitRelativePath)
-      } else if (file.fullPath) {
-        formData.append("fullpath", file.fullPath)
-      }
+    sending: function (file, _, formData) {
+      formData.append("team", route.params.team)
+      formData.append(
+        "personal",
+        store.state.breadcrumbs[0].label == "Home" ? 1 : 0
+      )
+      if (file.lastModified) formData.append("last_modified", file.lastModified)
+      if (file.parent) formData.append("parent", file.parent)
+      const path = file.newFullPath || file.webkitRelativePath || file.fullPath
+      if (path) formData.append("fullpath", path)
     },
     params: function (files, xhr, chunk) {
       if (chunk) {
@@ -190,16 +187,18 @@ onMounted(() => {
   })
   dropzone.value.on("error", function (file, response) {
     let message
-    if (typeof response === Object) {
+    if (typeof response === "object") {
       message = JSON.parse(JSON.parse(response._server_messages)[0]).message
     }
-    message = message || response || "Upload failed"
+    message = message || "Upload failed"
+    console.log(response)
     store.commit("updateUpload", {
       uuid: file.upload.uuid,
       error: message,
     })
   })
   dropzone.value.on("success", function (file, response) {
+    emit("success")
     uploadResponse.value = response.message
     store.commit("updateUpload", {
       uuid: file.upload.uuid,
@@ -211,12 +210,7 @@ onMounted(() => {
       uuid: file.upload.uuid,
       completed: true,
     })
-    capture("new_file_uploaded")
   })
-  /*   emitter.on("directUpload", (file) => {
-    dropzone.value.addFile(file)
-    return directUplodEntityName.value
-  }); */
   emitter.on("uploadFile", () => {
     if (dropzone.value.hiddenFileInput) {
       dropzone.value.hiddenFileInput.removeAttribute("webkitdirectory")

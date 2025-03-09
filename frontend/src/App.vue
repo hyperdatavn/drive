@@ -7,10 +7,7 @@
 
   <template v-else>
     <!-- Main container no scroll -->
-    <div
-      class="flex w-screen h-screen antialiased overflow-hidden"
-      @contextmenu="handleDefaultContext($event)"
-    >
+    <div class="flex w-screen h-screen antialiased overflow-hidden">
       <!-- Main container with scroll -->
       <div class="h-full w-full flex flex-col">
         <SearchPopup
@@ -24,13 +21,20 @@
           <Sidebar v-if="isLoggedIn" class="hidden sm:block" />
           <div id="dropTarget" class="h-full w-full overflow-hidden">
             <Navbar
+              v-if="$route.name == 'File' || $route.name == 'Document'"
               :mobile-sidebar-is-open="showMobileSidebar"
               @toggle-mobile-sidebar="showMobileSidebar = !showMobileSidebar"
             />
             <div class="flex w-full h-full overflow-hidden">
               <!-- Find a better way to handle the height overflow here (52px is the Navbar) -->
+              <!-- what on mars is he talking about? -->
               <div
-                class="flex w-full h-[calc(100dvh-105px)] sm:h-[calc(100dvh-52px)] overflow-hidden"
+                class="flex w-full overflow-hidden"
+                :class="
+                  $route.name == 'File' || $route.name == 'Document'
+                    ? 'h-[calc(100dvh-105px)] sm:h-[calc(100dvh-52px)]'
+                    : 'h-full sm:h-full'
+                "
               >
                 <router-view :key="$route.fullPath" v-slot="{ Component }">
                   <component
@@ -48,11 +52,9 @@
             class="fixed bottom-0 w-full sm:hidden"
           />
         </div>
-        <!-- Auth -->
         <router-view v-else />
       </div>
     </div>
-    <FileUploader v-if="isLoggedIn" />
     <Transition
       enter-active-class="transition duration-[150ms] ease-[cubic-bezier(.21,1.02,.73,1)]"
       enter-from-class="translate-y-1 opacity-0"
@@ -77,9 +79,7 @@ import { Toasts } from "@/utils/toasts.js"
 import FilePicker from "./components/FilePicker.vue"
 import MoveDialog from "./components/MoveDialog.vue"
 import SearchPopup from "./components/SearchPopup.vue"
-import FileUploader from "./components/FileUploader.vue"
 import BottomBar from "./components/BottomBar.vue"
-import { init as initTelemetry } from "@/telemetry"
 
 export default {
   name: "App",
@@ -95,7 +95,6 @@ export default {
     FilePicker,
     MoveDialog,
     SearchPopup,
-    FileUploader,
     BottomBar,
   },
   data() {
@@ -129,74 +128,70 @@ export default {
     },
   },
   async mounted() {
-    this.$store.dispatch.getServerTZ
-    this.addKeyboardShortcut()
+    this.addKeyboardShortcuts()
     this.emitter.on("showSearchPopup", (data) => {
       this.showSearchPopup = data
     })
-    await initTelemetry()
+    if (!this.isLoggedIn) return
   },
   methods: {
-    handleDefaultContext(event) {
-      if (this.$route.meta.documentPage) {
-        return
-      } else if (
-        this.$store.state.entityInfo[0]?.mime_type ===
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
-        this.$route.name === "File"
-      ) {
-        return
-      } else {
-        return event.preventDefault()
-      }
-    },
     async currentPageEmitTrigger() {
       this.emitter.emit("fetchFolderContents")
     },
-    addKeyboardShortcut() {
+    addKeyboardShortcuts() {
+      let tapped
+
       window.addEventListener("keydown", (e) => {
+        let params = { team: localStorage.getItem("recentTeam") }
+        const DOUBLE_KEY_MAPS = {
+          k: () => setTimeout(() => (this.showSearchPopup = true), 15), // band aid fix as k was showing up in search
+          h: () => this.$router.push({ name: "Home", params }),
+          n: () => this.$router.push({ name: "Notifications", params }),
+          t: () => this.$router.push({ name: "Team", params }),
+          f: () => this.$router.push({ name: "Favourites", params }),
+          r: () => this.$router.push({ name: "Recents", params }),
+          s: () => this.$router.push({ name: "Shared" }),
+        }
+
+        const KEY_MAPS = [
+          [
+            (e) => e.metaKey && e.shiftKey && e.key == "ArrowRight",
+            () => this.$store.commit("setIsSidebarExpanded", true),
+          ],
+          [
+            (e) => e.metaKey && e.shiftKey && e.key == "ArrowLeft",
+            () => this.$store.commit("setIsSidebarExpanded", false),
+          ],
+          [
+            (e) => e.metaKey && e.key == "k",
+            () => (this.showSearchPopup = true),
+          ],
+        ]
+
         if (
-          e.key === "k" &&
-          (e.ctrlKey || e.metaKey) &&
-          !e.target.classList.contains("ProseMirror")
-        ) {
-          this.showSearchPopup = true
-          e.preventDefault()
+          e.target.classList.contains("ProseMirror") ||
+          e.target.tagName === "INPUT"
+        )
+          return
+
+        for (const key in DOUBLE_KEY_MAPS) {
+          if (e.key === key) {
+            if (tapped === key) {
+              DOUBLE_KEY_MAPS[key]()
+              tapped = null
+            } else {
+              tapped = key
+              setTimeout(() => (tapped = null), 500)
+            }
+          }
+        }
+        for (let [keys, action] of KEY_MAPS) {
+          if (keys(e)) {
+            action()
+            document.activeElement.blur()
+          }
         }
       })
-    },
-  },
-  resources: {
-    isAdmin() {
-      return {
-        url: "drive.utils.users.drive_user_level",
-        cache: "is_admin",
-        onSuccess(data) {
-          console.log(data)
-          this.$store.state.user.role = data
-        },
-        onError(error) {
-          if (error && error.exc_type === "PermissionError") {
-            this.$store.commit("setError", {
-              iconName: "alert-triangle",
-              iconClass: "fill-amber-500 stroke-white",
-              primaryMessage: "Forbidden",
-              secondaryMessage: "You do not have access to Frappe Drive",
-              hideButton: true,
-            })
-          }
-          this.$router.replace({ name: "Error" })
-        },
-        auto: this.$store.getters.isLoggedIn,
-      }
-    },
-    getServerTZ: {
-      url: "drive.api.api.get_server_timezone",
-      auto: true,
-      method: "GET",
-      onSuccess(data) {
-        this.$store.state.serverTZ = data
-      },
     },
   },
 }
